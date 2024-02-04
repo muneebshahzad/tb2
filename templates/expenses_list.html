@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <title>Expenses List</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="static/assets/css/main.css">
+
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.4.min.js" crossorigin="anonymous"></script>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+    <script src="static/assets/js/expense.js"></script>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+
+</head>
+
+<body>
+    {% include 'header.html' %}
+    <br>
+<center>     <h1>Expenses</h1> </center>
+   <br>
+    <div id="page-wrapper">
+        <section id="intro" class="container">
+            <!-- Display "From" and "To" dates with date picker -->
+            <div class="mb-3">
+                <form id="filterForm">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label for="fromDate" class="form-label">From:</label>
+                            <input type="date" id="fromDate" name="fromDate" class="form-control" onclick="showDatePicker('fromDate')">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="toDate" class="form-label">To:</label>
+                            <input type="date" id="toDate" name="toDate" class="form-control" onclick="showDatePicker('toDate')">
+                        </div>
+                        <div class="col-md-4">
+                            <!-- Button to apply date filter --><br>
+                            <button type="submit" class="btn btn-primary">Apply Filter</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Display the expenses table -->
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Expense Category</th>
+                        <th>Sub Category</th>
+                        <th>Amount</th>
+                        <th>Payment Method</th>
+                        <th>Payment By</th>
+                        <th>Date and Time</th>
+                    </tr>
+                </thead>
+                <tbody id="expensesTableBody">
+                    {% for expense in expenses_data %}
+                        <tr>
+                            <td>{{ expense.expense_category }}</td>
+                            <td>{{ expense.sub_category }}</td>
+                            <td>{{ expense.amount }}</td>
+                            <td>{{ expense.payment_method }}</td>
+                            <td>{{ expense.payment_by }}</td>
+                            <td>{{ expense.submission_datetime }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Footer section -->
+        <section id="footer">
+            <!-- Your existing footer content -->
+        </section>
+
+    </div>
+
+    <!-- Bootstrap JS and additional scripts if needed -->
+    <script>
+        $(document).ready(function () {
+            $("#filterForm").submit(function (e) {
+                e.preventDefault(); // Prevent the default form submission
+
+                // Get the form data
+                var formData = {
+                    fromDate: $("#fromDate").val(),
+                    toDate: $("#toDate").val()
+                };
+
+                // Send an AJAX request to the server
+                $.ajax({
+                    type: "POST",
+                    url: "/get_filtered_expenses",
+                    data: formData,
+                    success: function (response) {
+                        // Handle the response from the server
+                        if ('error' in response) {
+                            console.error(response.error);
+                        } else {
+                            // Update the HTML with the new expenses data
+                            updateExpensesList(response.expenses_data);
+                        }
+                    },
+                    error: function (error) {
+                        console.error("Error fetching filtered expenses data:", error);
+                    }
+                });
+            });
+
+            function updateExpensesList(expensesData) {
+                // Assuming expensesData is an array of objects with properties like expense_category, sub_category, amount, payment_method, payment_by, submission_datetime
+
+                // Clear existing data
+                $("#expensesTableBody").empty();
+
+                // Iterate through the expensesData and append rows to the table
+                for (var i = 0; i < expensesData.length; i++) {
+                    var expense = expensesData[i];
+
+                    // Create a new row
+                    var newRow = $("<tr>");
+
+                    // Append cells with data
+                    newRow.append($("<td>").text(expense.expense_category));
+                    newRow.append($("<td>").text(expense.sub_category));
+                    newRow.append($("<td>").text(expense.amount));
+                    newRow.append($("<td>").text(expense.payment_method));
+                    newRow.append($("<td>").text(expense.payment_by));
+                    newRow.append($("<td>").text(expense.submission_datetime));
+
+                    // Append the new row to the table body
+                    $("#expensesTableBody").append(newRow);
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>
