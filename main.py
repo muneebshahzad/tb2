@@ -14,13 +14,12 @@ global_ids_expense = {'expense_id': None, 'payment_by': None, 'payment_to': None
 
 mon = datetime.now().strftime("%B")
 def check_database_connection():
-    server = 'localhost'
-    database = 'tickbags'
-    driver = 'SQL Server'
-    connection_string = 'DRIVER={SQL Server};SERVER=DESKTOP-7IJ8SAC\SQLEXPRESS;DATABASE=tickbags;Trusted_Connection=yes;'
+    connection_string = 'Server=tcp:tickbags.database.windows.net,1433;Initial Catalog=TickBags;Persist Security Info=False;User ID=tickbags_ltd;Password=TB@2024!;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;'
 
     try:
-        connection = pyodbc.connect(connection_string)
+        print(f'Connecting to: {database_url}')
+        connection = pyodbc.connect(database_url)
+        print("Connected to the database")
         return connection
     except Exception as e:
         print(f"Error: {str(e)}")
