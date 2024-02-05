@@ -3,6 +3,9 @@ from flask import Flask, render_template, request, redirect, url_for, session, j
 import datetime, random
 from datetime import datetime
 import os
+from sqlalchemy import create_engine
+import pymssql
+
 
 # Accessing environment variable
 database_url = os.environ.get('DATABASE_URL')
@@ -20,26 +23,20 @@ global_ids_expense = {'expense_id': None, 'payment_by': None, 'payment_to': None
 
 mon = datetime.now().strftime("%B")
 def check_database_connection():
-    # Explicitly specify the ODBC driver name
-    driver_name = 'ODBC Driver 17 for SQL Server'
-
-    connection_string = 'DRIVER={};'.format(driver_name) + \
-                        'Server=tcp:tickbags.database.windows.net,1433;' + \
-                        'Database=TickBags;' + \
-                        'Uid=tickbags_ltd;' + \
-                        'Pwd=TB@2024!;' + \
-                        'Encrypt=no;' + \
-                        'TrustServerCertificate=no;' + \
-                        'Connection Timeout=30;'
+    server = 'tickbags.database.windows.net'
+    database = 'TickBags'
+    username = 'tickbags_ltd'
+    password = 'TB@2024!'
 
     try:
         print('Connecting to the database...')
-        connection = pyodbc.connect(connection_string)
+        connection = pymssql.connect(server=server, user=username, password=password, database=database)
         print('Connected to the database')
         return connection
-    except pyodbc.Error as e:
+    except pymssql.Error as e:
         print(f"Error connecting to the database: {str(e)}")
         return None
+
 
 def execute_query(connection, query, params=None, fetchall=False, as_dict=False):
     cursor = connection.cursor()
