@@ -83,7 +83,7 @@ def login():
         try:
             if connection:
                 cursor = connection.cursor()
-                query = "SELECT * FROM users WHERE username = ? AND password = ?"
+                query = "SELECT * FROM users WHERE username = %s AND password = %s"
                 cursor.execute(query, (username, password))
                 user = cursor.fetchone()
 
@@ -190,7 +190,7 @@ def add_X_to_accounts(connection, received_by):
     cursor = connection.cursor()
 
     try:
-        cursor.execute('INSERT INTO accounts (accounts_name) VALUES (?)', received_by)
+        cursor.execute('INSERT INTO accounts (accounts_name) VALUES (%s)', received_by)
         connection.commit()
         return True
 
@@ -218,17 +218,17 @@ def get_ids(connection, income_type, payment_via, received_by):
             payment_to = global_ids['payment_to']
         else:
             # Fetch values only if not already fetched
-            cursor.execute('SELECT income_id FROM income_type WHERE income_title = ?', income_type)
+            cursor.execute('SELECT income_id FROM income_type WHERE income_title = %s', income_type)
             result = cursor.fetchone()
             if result:
                 income_id = result[0]
 
-            cursor.execute('SELECT account_id FROM accounts WHERE accounts_name = ?', payment_via)
+            cursor.execute('SELECT account_id FROM accounts WHERE accounts_name = %s', payment_via)
             result = cursor.fetchone()
             if result:
                 payment_by = result[0]
 
-            cursor.execute('SELECT account_id FROM accounts WHERE accounts_name = ?', received_by)
+            cursor.execute('SELECT account_id FROM accounts WHERE accounts_name = %s', received_by)
             result = cursor.fetchone()
             if result:
                 payment_to = result[0]
@@ -262,17 +262,17 @@ def get_expense_ids(connection, income_type, payment_via, received_by):
             payment_to = global_ids['payment_to']
         else:
             # Fetch values only if not already fetched
-            cursor.execute('SELECT expense_id FROM expense_type WHERE expense_title = ?', income_type)
+            cursor.execute('SELECT expense_id FROM expense_type WHERE expense_title = %s', income_type)
             result = cursor.fetchone()
             if result:
                 income_id = result[0]
 
-            cursor.execute('SELECT account_id FROM accounts WHERE accounts_name = ?', payment_via)
+            cursor.execute('SELECT account_id FROM accounts WHERE accounts_name = %s', payment_via)
             result = cursor.fetchone()
             if result:
                 payment_by = result[0]
 
-            cursor.execute('SELECT account_id FROM accounts WHERE accounts_name = ?', received_by)
+            cursor.execute('SELECT account_id FROM accounts WHERE accounts_name = %s', received_by)
             result = cursor.fetchone()
             if result:
                 payment_to = result[0]
@@ -301,10 +301,10 @@ def add_transaction(connection, amount, income_id, source, description, payment_
 
         cursor.execute(
             'INSERT INTO Transactions (amount, income_id, source, description, payment_by, payment_to, submission_datetime, type) '
-            'VALUES (?, ?, ?, ?, ?, ?, ?, 1)',
+            'VALUES (%s, %s, %s, %s, %s, %s, %s, 1)',
             amount, income_id, source, description, payment_by, payment_to, submission_datetime
         )
-        cursor.execute('UPDATE accounts SET accounts_balance = accounts_balance + ? WHERE account_id = ?', amount, payment_by)
+        cursor.execute('UPDATE accounts SET accounts_balance = accounts_balance + %s WHERE account_id = %s', amount, payment_by)
         global_ids = {'income_id': None, 'payment_by': None, 'payment_to': None}
 
 
@@ -402,7 +402,7 @@ def add_X_to_accounts(connection, received_by):
     cursor = connection.cursor()
 
     try:
-        cursor.execute('INSERT INTO accounts (accounts_name) VALUES (?)', received_by)
+        cursor.execute('INSERT INTO accounts (accounts_name) VALUES (%s)', received_by)
         connection.commit()
         return True
 
@@ -430,17 +430,17 @@ def get_ids(connection, income_type, payment_via, received_by):
             payment_to = global_ids['payment_to']
         else:
             # Fetch values only if not already fetched
-            cursor.execute('SELECT income_id FROM income_type WHERE income_title = ?', income_type)
+            cursor.execute('SELECT income_id FROM income_type WHERE income_title = %s', income_type)
             result = cursor.fetchone()
             if result:
                 income_id = result[0]
 
-            cursor.execute('SELECT account_id FROM accounts WHERE accounts_name = ?', payment_via)
+            cursor.execute('SELECT account_id FROM accounts WHERE accounts_name = %s', payment_via)
             result = cursor.fetchone()
             if result:
                 payment_by = result[0]
 
-            cursor.execute('SELECT account_id FROM accounts WHERE accounts_name = ?', received_by)
+            cursor.execute('SELECT account_id FROM accounts WHERE accounts_name = %s', received_by)
             result = cursor.fetchone()
             if result:
                 payment_to = result[0]
@@ -474,17 +474,17 @@ def get_expense_ids(connection, expense_type, payment_via, received_by):
             payment_to = global_ids_expense['payment_to']
         else:
             # Fetch values only if not already fetched
-            cursor.execute('SELECT expense_id FROM expense_type WHERE expense_title = ?', expense_type)
+            cursor.execute('SELECT expense_id FROM expense_type WHERE expense_title = %s', expense_type)
             result = cursor.fetchone()
             if result:
                 expense_id = result[0]
 
-            cursor.execute('SELECT account_id FROM accounts WHERE accounts_name = ?', payment_via)
+            cursor.execute('SELECT account_id FROM accounts WHERE accounts_name = %s', payment_via)
             result = cursor.fetchone()
             if result:
                 payment_by = result[0]
 
-            cursor.execute('SELECT account_id FROM accounts WHERE accounts_name = ?', received_by)
+            cursor.execute('SELECT account_id FROM accounts WHERE accounts_name = %s', received_by)
             result = cursor.fetchone()
             if result:
                 payment_to = result[0]
@@ -511,7 +511,7 @@ def check_source_exists(connection, source):
             '''
             SELECT COUNT(*) AS source_exists
             FROM accounts
-            WHERE accounts_name = ? 
+            WHERE accounts_name = %s 
               AND accounts_name NOT IN ('Bank', 'Cash');
             ''',
             source
@@ -541,17 +541,17 @@ def add_expense_transaction(connection, amount, expense_id, source, description,
         cursor.execute(
             '''
             INSERT INTO Transactions (amount, income_id, source, description, payment_by, payment_to, submission_datetime, type) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, -1)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, -1)
             ''',
             amount, expense_id, source, description, payment_by, payment_to, submission_datetime
         )
 
         # If the source exists in accounts and is not "Bank" or "Cash", adjust its balance
         if source_exists and expense_id !=4:
-            cursor.execute('UPDATE accounts SET accounts_balance = accounts_balance - ? WHERE accounts_name = ?', amount, source)
+            cursor.execute('UPDATE accounts SET accounts_balance = accounts_balance - %s WHERE accounts_name = %s', amount, source)
 
         # For other types of expenses, deduct the balance from the specified payment_to account
-        cursor.execute('UPDATE accounts SET accounts_balance = accounts_balance - ? WHERE account_id = ?', amount, payment_by)
+        cursor.execute('UPDATE accounts SET accounts_balance = accounts_balance - %s WHERE account_id = %s', amount, payment_by)
 
         connection.commit()
         global_ids_expense = {'expense_id': None, 'payment_by': None, 'payment_to': None}
@@ -935,7 +935,7 @@ def fetch_income_this_month(connection):
     finally:
         cursor.close()
 
-        
+
 @app.route('/get_cash_on_hand', methods=['GET'])
 def get_cash_on_hand():
     connection = check_database_connection()
@@ -1014,18 +1014,18 @@ def fetch_expenses_data(connection):
             if row[6] == -1:
                 # Fetch expense category from expense_type table using income_id
                 print(row[0])
-                cursor.execute('SELECT expense_title FROM expense_type WHERE expense_id = ?', (row[0],))
+                cursor.execute('SELECT expense_title FROM expense_type WHERE expense_id = %s', (row[0],))
                 data = cursor.fetchone()
                 category = data[0] if data and data[0] is not None else None
                 print(category)
 
                 # Fetch payment method from accounts table using payment_by
-                cursor.execute('SELECT accounts_name FROM accounts WHERE account_id = ?', (row[2],))
+                cursor.execute('SELECT accounts_name FROM accounts WHERE account_id = %s', (row[2],))
                 data = cursor.fetchone()
                 payment_method = data[0] if data and data[0] is not None else None
 
                 # Fetch payment by from accounts table using payment_to
-                cursor.execute('SELECT accounts_name FROM accounts WHERE account_id = ?', (row[3],))
+                cursor.execute('SELECT accounts_name FROM accounts WHERE account_id = %s', (row[3],))
                 data = cursor.fetchone()
                 payment_by = data[0] if data and data[0] is not None else None
 
@@ -1059,7 +1059,7 @@ def get_filtered_expenses_data(connection, from_date, to_date):
         # Execute the SQL query
         query = 'SELECT income_id, source, payment_by, payment_to, submission_datetime, amount, type ' \
                 'FROM Transactions ' \
-                'WHERE submission_datetime BETWEEN ? AND ? AND type = -1'
+                'WHERE submission_datetime BETWEEN %s AND %s AND type = -1'
         cursor.execute(query, (from_date, to_date))
         expenses_data = cursor.fetchall()
 
@@ -1069,17 +1069,17 @@ def get_filtered_expenses_data(connection, from_date, to_date):
         for row in expenses_data:
             if row[6] == -1:
                 # Fetch expense category from expense_type table using income_id
-                cursor.execute('SELECT expense_title FROM expense_type WHERE expense_id = ?', (row[0],))
+                cursor.execute('SELECT expense_title FROM expense_type WHERE expense_id = %s', (row[0],))
                 data = cursor.fetchone()
                 category = data[0] if data and data[0] is not None else None
 
                 # Fetch payment method from accounts table using payment_by
-                cursor.execute('SELECT accounts_name FROM accounts WHERE account_id = ?', (row[2],))
+                cursor.execute('SELECT accounts_name FROM accounts WHERE account_id = %s', (row[2],))
                 data = cursor.fetchone()
                 payment_method = data[0] if data and data[0] is not None else None
 
                 # Fetch payment by from accounts table using payment_to
-                cursor.execute('SELECT accounts_name FROM accounts WHERE account_id = ?', (row[3],))
+                cursor.execute('SELECT accounts_name FROM accounts WHERE account_id = %s', (row[3],))
                 data = cursor.fetchone()
                 payment_by = data[0] if data and data[0] is not None else None
 
@@ -1171,17 +1171,17 @@ def fetch_income_data(connection):
         for row in income_data:
             if row[6] == 1:
                 # Fetch income category from income_type table using income_id
-                cursor.execute('SELECT income_title FROM income_type WHERE income_id = ?', (row[0],))
+                cursor.execute('SELECT income_title FROM income_type WHERE income_id = %s', (row[0],))
                 data = cursor.fetchone()
                 category = data[0] if data and data[0] is not None else None
 
                 # Fetch payment method from accounts table using payment_by
-                cursor.execute('SELECT accounts_name FROM accounts WHERE account_id = ?', (row[2],))
+                cursor.execute('SELECT accounts_name FROM accounts WHERE account_id = %s', (row[2],))
                 data = cursor.fetchone()
                 payment_method = data[0] if data and data[0] is not None else None
 
                 # Fetch received by from accounts table using payment_to
-                cursor.execute('SELECT accounts_name FROM accounts WHERE account_id = ?', (row[3],))
+                cursor.execute('SELECT accounts_name FROM accounts WHERE account_id = %s', (row[3],))
                 data = cursor.fetchone()
                 received_by = data[0] if data and data[0] is not None else None
 
@@ -1216,7 +1216,7 @@ def get_filtered_income_data(connection, from_date, to_date):
         # Execute the SQL query
         query = 'SELECT income_id, source, payment_by, payment_to, submission_datetime, amount, type ' \
                 'FROM Transactions ' \
-                'WHERE submission_datetime BETWEEN ? AND ? AND type = 1'
+                'WHERE submission_datetime BETWEEN %s AND %s AND type = 1'
         cursor.execute(query, (from_date, to_date))
         income_data = cursor.fetchall()
 
@@ -1226,17 +1226,17 @@ def get_filtered_income_data(connection, from_date, to_date):
         for row in income_data:
             if row[6] == 1:
                 # Fetch income category from income_type table using income_id
-                cursor.execute('SELECT income_title FROM income_type WHERE income_id = ?', (row[0],))
+                cursor.execute('SELECT income_title FROM income_type WHERE income_id = %s', (row[0],))
                 data = cursor.fetchone()
                 category = data[0] if data and data[0] is not None else None
 
                 # Fetch payment method from accounts table using payment_by
-                cursor.execute('SELECT accounts_name FROM accounts WHERE account_id = ?', (row[2],))
+                cursor.execute('SELECT accounts_name FROM accounts WHERE account_id = %s', (row[2],))
                 data = cursor.fetchone()
                 payment_method = data[0] if data and data[0] is not None else None
 
                 # Fetch received by from accounts table using payment_to
-                cursor.execute('SELECT accounts_name FROM accounts WHERE account_id = ?', (row[3],))
+                cursor.execute('SELECT accounts_name FROM accounts WHERE account_id = %s', (row[3],))
                 data = cursor.fetchone()
                 received_by = data[0] if data and data[0] is not None else None
 
