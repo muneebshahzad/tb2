@@ -2,7 +2,13 @@ import pyodbc
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 import datetime, random
 from datetime import datetime
+import os
 
+# Accessing environment variable
+database_url = os.environ.get('DATABASE_URL')
+
+# Print the value
+print(f'DATABASE_URL: {database_url}')
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'  # Change this to a secure secret key
 
@@ -14,12 +20,19 @@ global_ids_expense = {'expense_id': None, 'payment_by': None, 'payment_to': None
 
 mon = datetime.now().strftime("%B")
 def check_database_connection():
-    connection_string = 'Server=tcp:tickbags.database.windows.net,1433;Initial Catalog=TickBags;Persist Security Info=False;User ID=tickbags_ltd;Password=TB@2024!;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;'
+    connection_string = 'Driver={ODBC Driver 17 for SQL Server};' + \
+                        'Server=tcp:tickbags.database.windows.net,1433;' + \
+                        'Database=TickBags;' + \
+                        'Uid=tickbags_ltd;' + \
+                        'Pwd=TB@2024!;' + \
+                        'Encrypt=yes;' + \
+                        'TrustServerCertificate=no;' + \
+                        'Connection Timeout=30;'
 
     try:
-        print(f'Connecting to: {database_url}')
-        connection = pyodbc.connect(database_url)
-        print("Connected to the database")
+        print('Connecting to the database...')
+        connection = pyodbc.connect(connection_string)
+        print('Connected to the database')
         return connection
     except Exception as e:
         print(f"Error: {str(e)}")
@@ -52,15 +65,17 @@ def execute_query(connection, query, params=None, fetchall=False, as_dict=False)
 
 @app.before_request
 def require_login():
-    allowed_routes = ['login', 'static']  # Add other routes that should be accessible without login
+    print('Endpoint:', request.endpoint)
+    allowed_routes = ['login', 'static']
     if request.endpoint not in allowed_routes and 'user_id' not in session:
-        return redirect(url_for('login'))  # Redirect to the login page if not logged in
-
+        print('Redirecting to login')
+        return redirect(url_for('login'))
 ##LOGIN
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
+        print('Login POST request received')
         username = request.form.get('username')
         password = request.form.get('password')
 
@@ -308,17 +323,6 @@ def add_transaction(connection, amount, income_id, source, description, payment_
 
 
 
-def check_database_connection():
-    server = 'localhost'
-    database = 'tickbags'
-    driver = 'SQL Server'
-    connection_string = 'DRIVER={SQL Server};SERVER=DESKTOP-7IJ8SAC\SQLEXPRESS;DATABASE=tickbags;Trusted_Connection=yes;'
-
-    try:
-        return pyodbc.connect(connection_string)
-    except Exception as e:
-        print(f"Error: {str(e)}")
-        return None
 
 
 def get_income_types(connection):
@@ -1362,4 +1366,4 @@ def logout():
 #logout
 
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0')
+    app.run(debug=True)
