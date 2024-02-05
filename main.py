@@ -3,7 +3,6 @@ from flask import Flask, render_template, request, redirect, url_for, session, j
 import datetime, random
 from datetime import datetime
 import os
-from sqlalchemy import create_engine
 import pymssql
 
 
@@ -36,7 +35,6 @@ def check_database_connection():
     except pymssql.Error as e:
         print(f"Error connecting to the database: {str(e)}")
         return None
-
 
 def execute_query(connection, query, params=None, fetchall=False, as_dict=False):
     cursor = connection.cursor()
@@ -859,26 +857,6 @@ def get_income_this_month():
             connection.close()
 
 
-def fetch_income_this_month(connection):
-    cursor = connection.cursor()
-
-    try:
-        current_month = datetime.now().month
-        current_year = datetime.now().year
-
-        cursor.execute("SELECT COALESCE(SUM(amount), 0) AS income FROM transactions WHERE type = 1 AND MONTH(submission_datetime) = ? AND YEAR(submission_datetime) = ?", (current_month, current_year))
-
-        data = cursor.fetchone()
-        income = data[0] if data and data[0] is not None else 0
-        print(income)
-        return income
-
-    except Exception as e:
-        print(f"Error fetching income this month data: {str(e)}")
-        return income
-
-    finally:
-        cursor.close()
 
 
 @app.route('/get_expenses_this_month', methods=['GET'])
@@ -903,6 +881,7 @@ def get_expenses_this_month():
 
 def fetch_expenses_this_month(connection):
     cursor = connection.cursor()
+    expenses = 0  # Initialize expenses
 
     try:
         current_month = datetime.now().month
@@ -912,13 +891,13 @@ def fetch_expenses_this_month(connection):
             SELECT COALESCE(SUM(amount), 0)
             FROM transactions 
             WHERE type = -1
-            AND MONTH(submission_datetime) = ? 
-            AND YEAR(submission_datetime) = ?
+            AND MONTH(submission_datetime) = %s
+            AND YEAR(submission_datetime) = %s
         """, (current_month, current_year))
 
         data = cursor.fetchone()
         expenses = data[0] if data and data[0] is not None else 0
-        print("The ?",expenses)
+        print(f"The expenses: {expenses}")
         return expenses
 
     except Exception as e:
@@ -928,6 +907,35 @@ def fetch_expenses_this_month(connection):
     finally:
         cursor.close()
 
+def fetch_income_this_month(connection):
+    cursor = connection.cursor()
+    income = 0  # Initialize income
+
+    try:
+        current_month = datetime.now().month
+        current_year = datetime.now().year
+
+        cursor.execute("""
+            SELECT COALESCE(SUM(amount), 0) AS income
+            FROM transactions 
+            WHERE type = 1
+            AND MONTH(submission_datetime) = %s
+            AND YEAR(submission_datetime) = %s
+        """, (current_month, current_year))
+
+        data = cursor.fetchone()
+        income = data[0] if data and data[0] is not None else 0
+        print(f"The income: {income}")
+        return income
+
+    except Exception as e:
+        print(f"Error fetching income this month data: {str(e)}")
+        return income
+
+    finally:
+        cursor.close()
+
+        
 @app.route('/get_cash_on_hand', methods=['GET'])
 def get_cash_on_hand():
     connection = check_database_connection()
