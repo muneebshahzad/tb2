@@ -20,23 +20,33 @@ global_ids_expense = {'expense_id': None, 'payment_by': None, 'payment_to': None
 
 mon = datetime.now().strftime("%B")
 def check_database_connection():
-    connection_string = 'Driver={ODBC Driver 17 for SQL Server};' + \
-                        'Server=tcp:tickbags.database.windows.net,1433;' + \
-                        'Database=TickBags;' + \
-                        'Uid=tickbags_ltd;' + \
-                        'Pwd=TB@2024!;' + \
-                        'Encrypt=no;' + \
-                        'TrustServerCertificate=no;' + \
-                        'Connection Timeout=30;'
+    driver_name = ''
+    driver_names = [x for x in pyodbc.drivers() if x.endswith(' for SQL Server')]
 
-    try:
-        print('Connecting to the database...')
-        connection = pyodbc.connect(connection_string)
-        print('Connected to the database')
-        return connection
-    except Exception as e:
-        print(f"Error: {str(e)}")
+    if driver_names:
+        driver_name = driver_names[0]
+
+    if driver_name:
+        connection_string = 'DRIVER={};'.format(driver_name) + \
+                            'Server=tcp:tickbags.database.windows.net,1433;' + \
+                            'Database=TickBags;' + \
+                            'Uid=tickbags_ltd;' + \
+                            'Pwd=TB@2024!;' + \
+                            'Encrypt=no;' + \
+                            'TrustServerCertificate=no;' + \
+                            'Connection Timeout=30;'
+        try:
+            print('Connecting to the database...')
+            connection = pyodbc.connect(connection_string)
+            print('Connected to the database')
+            return connection
+        except Exception as e:
+            print(f"Error: {str(e)}")
+            return None
+    else:
+        print('(No suitable driver found. Cannot connect.)')
         return None
+
 def execute_query(connection, query, params=None, fetchall=False, as_dict=False):
     cursor = connection.cursor()
 
