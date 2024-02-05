@@ -25,7 +25,7 @@ def check_database_connection():
                         'Database=TickBags;' + \
                         'Uid=tickbags_ltd;' + \
                         'Pwd=TB@2024!;' + \
-                        'Encrypt=yes;' + \
+                        'Encrypt=no;' + \
                         'TrustServerCertificate=no;' + \
                         'Connection Timeout=30;'
 
@@ -37,7 +37,6 @@ def check_database_connection():
     except Exception as e:
         print(f"Error: {str(e)}")
         return None
-
 def execute_query(connection, query, params=None, fetchall=False, as_dict=False):
     cursor = connection.cursor()
 
