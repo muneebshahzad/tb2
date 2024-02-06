@@ -4,6 +4,23 @@ import datetime, random
 from datetime import datetime
 import os
 import pymssql
+import lazop
+client = lazop.LazopClient('https://api.daraz.pk/rest', '501554', 'nrP3XFN7ChZL53cXyVED1yj4iGZZtlcD')
+
+@app.route('/daraz', methods=['GET'])
+def daraz_callback():
+    # Extract the authorization code from the callback URL
+    code = request.args.get('code')
+
+    # Create a Lazop request to exchange authorization code for access token
+    request = lazop.LazopRequest('/auth/token/create', 'GET')
+    request.add_api_param('code', code)
+
+    # Execute the request and get the response
+    response = client.execute(request)
+
+    # Return the access token response
+    return jsonify(response.body)
 
 
 # Accessing environment variable
