@@ -7,6 +7,12 @@ import pymssql
 import lazop
 client = lazop.LazopClient('https://api.daraz.pk/rest', '501554', 'nrP3XFN7ChZL53cXyVED1yj4iGZZtlcD')
 
+@app.route('/d')
+def daraz():
+    # Render the index.html template
+    return render_template('daraz.html')
+
+
 @app.route('/daraz', methods=['GET'])
 def daraz_callback():
     # Extract the authorization code from the callback URL
