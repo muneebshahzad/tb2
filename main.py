@@ -6,6 +6,7 @@ import os
 import pymssql
 import lazop
 client = lazop.LazopClient('https://api.daraz.pk/rest', '501554', 'nrP3XFN7ChZL53cXyVED1yj4iGZZtlcD')
+app = Flask(__name__)
 
 @app.route('/d')
 def daraz():
