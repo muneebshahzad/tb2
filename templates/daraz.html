@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daraz API Authentication</title>
+</head>
+<body>
+    <h1>Daraz API Authentication</h1>
+    <form action="https://api.daraz.pk/oauth/authorize" method="GET">
+        <input type="hidden" name="response_type" value="code">
+        <input type="hidden" name="redirect_uri" value="https://admin.tickbags.com/daraz">
+        <input type="hidden" name="client_id" value="501554">
+        <button type="submit">Authorize</button>
+    </form>
+    <div id="token"></div>
+
+    <script>
+        // Function to extract parameters from URL
+        function getParameterByName(name, url) {
+            if (!url) url = window.location.href;
+            name = name.replace(/[\[\]]/g, "\\$&");
+            var regex = new RegExp("[?&]" + name + "(=([^&#]*)|&|#|$)"),
+                results = regex.exec(url);
+            if (!results) return null;
+            if (!results[2]) return '';
+            return decodeURIComponent(results[2].replace(/\+/g, " "));
+        }
+
+        // Check if there is an authorization code in the URL
+        var code = getParameterByName('code');
+        if (code) {
+            // If there is an authorization code, display it
+            document.getElementById('token').innerHTML = '<p>Authorization Code: ' + code + '</p>';
+            // You can send this code to your backend to obtain the access token
+            // and perform further API requests
+        }
+    </script>
+</body>
+</html>
