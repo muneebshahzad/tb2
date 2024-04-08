@@ -11,6 +11,17 @@
             background-color: #fff; /* White background color */
         }
     </style>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+
+  <style>
+    table.expense-table {
+      background-color: #f8d7da !important; /* light red color */
+    }
+
+    table.income-table {
+      background-color: #d4edda !important; /* light green color */
+    }
+  </style>
  <script>
         // Function to update the Source dropdown based on the selected Type
         function updateSourceDropdown() {
@@ -50,7 +61,7 @@
 
 						<section id="intro" class="container">
 							<div class="row">
-								<div class="col-4 col-12-medium">
+								<div class="col-3 col-6-medium">
     <section class="first">
         <i class="icon solid featured fas fa-briefcase"></i>
         <header>
@@ -59,8 +70,8 @@
         <p>Current cash on hand. </p>
     </section>
 </div>
-<div class="col-4 col-12-medium">
-    <section class="middle">
+<div class="col-3 col-6-medium">
+    <section class="first">
         <i class="icon solid featured alt fa-file-invoice-dollar"></i>
         <header>
             <h2 id="incomeThisMonth">Rs 0</h2>
@@ -68,7 +79,7 @@
         <p>Income this month ({{month}}) </p>
     </section>
 </div>
-<div class="col-4 col-12-medium">
+<div class="col-3 col-6-medium">
     <section class="last">
         <i class="icon solid featured alt2 fas fa-balance-scale-right"></i>
         <header>
@@ -77,6 +88,17 @@
         <p>Expenses this month ({{month}})</p>
     </section>
 </div>
+                                <div class="col-3 col-6-medium">
+    <section class="middle">
+        <i class="icon solid featured fas fa-briefcase" style="color: green;"></i>
+
+        <header>
+            <h2 id="netThisMonth">Rs 0</h2>
+        </header>
+        <p>Net Profit ({{month}}) </p>
+    </section>
+</div>
+
 							</div>
 							<footer>
 								<ul class="actions">
@@ -84,6 +106,46 @@
 									<li><a href="/add_expense" class="button alt large">Add Expense</a></li>
 								</ul>
 							</footer>
+                           <div class="container">
+  <div class="row">
+    <div class="col-md-6">
+      <table class="table table-bordered expense-table">
+        <thead>
+          <tr>
+            <th scope="col">Source</th>
+            <th scope="col">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for expense in expense_data %}
+          <tr>
+            <td>{{ expense[2] }}</td>
+            <td>Rs {{ expense[1] }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="col-md-6">
+      <table class="table table-bordered income-table">
+        <thead>
+          <tr>
+            <th scope="col">Source</th>
+            <th scope="col">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for income in income_data %}
+          <tr>
+            <td>{{ income[2] }}</td>
+            <td>Rs {{ income[1] }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
 						</section>
 
 
@@ -102,41 +164,86 @@
 <script>
     // Function to update the displayed amounts
     function updateAmounts() {
-        // Make an AJAX request to fetch current cash on hand
-        var cashOnHandRequest = new XMLHttpRequest();
-        cashOnHandRequest.onreadystatechange = function () {
-            if (cashOnHandRequest.readyState == 4 && cashOnHandRequest.status == 200) {
-                document.getElementById('cashOnHand').innerText = 'Rs ' + cashOnHandRequest.responseText;
-            }
-        };
-        cashOnHandRequest.open('GET', '/get_cash_on_hand', true);
-        cashOnHandRequest.send();
+    // Make an AJAX request to fetch current cash on hand
+    var cashOnHandRequest = new XMLHttpRequest();
+    cashOnHandRequest.onreadystatechange = function () {
+        if (cashOnHandRequest.readyState == 4 && cashOnHandRequest.status == 200) {
+            document.getElementById('cashOnHand').innerText = 'Rs ' + cashOnHandRequest.responseText;
+        }
+    };
+    cashOnHandRequest.open('GET', '/get_cash_on_hand', true);
+    cashOnHandRequest.send();
 
-        // Make an AJAX request to fetch income this month
-        var incomeThisMonthRequest = new XMLHttpRequest();
-        incomeThisMonthRequest.onreadystatechange = function () {
-            if (incomeThisMonthRequest.readyState == 4 && incomeThisMonthRequest.status == 200) {
-                document.getElementById('incomeThisMonth').innerText = 'Rs ' + incomeThisMonthRequest.responseText;
-            }
-        };
-        incomeThisMonthRequest.open('GET', '/get_income_this_month', true);
-        incomeThisMonthRequest.send();
+    // Make an AJAX request to fetch income this month
+    var incomeThisMonthRequest = new XMLHttpRequest();
+    incomeThisMonthRequest.onreadystatechange = function () {
+        if (incomeThisMonthRequest.readyState == 4 && incomeThisMonthRequest.status == 200) {
+            document.getElementById('incomeThisMonth').innerText = 'Rs ' + incomeThisMonthRequest.responseText;
+        }
+    };
+    incomeThisMonthRequest.open('GET', '/get_income_this_month', true);
+    incomeThisMonthRequest.send();
 
-        // Make an AJAX request to fetch expenses this month
-        var expensesThisMonthRequest = new XMLHttpRequest();
-        expensesThisMonthRequest.onreadystatechange = function () {
-            if (expensesThisMonthRequest.readyState == 4 && expensesThisMonthRequest.status == 200) {
-                document.getElementById('expensesThisMonth').innerText = 'Rs ' + expensesThisMonthRequest.responseText;
-            }
-        };
-        expensesThisMonthRequest.open('GET', '/get_expenses_this_month', true);
-        expensesThisMonthRequest.send();
-    }
+    // Make an AJAX request to fetch expenses this month
+    var expensesThisMonthRequest = new XMLHttpRequest();
+    expensesThisMonthRequest.onreadystatechange = function () {
+        if (expensesThisMonthRequest.readyState == 4 && expensesThisMonthRequest.status == 200) {
+            document.getElementById('expensesThisMonth').innerText = 'Rs ' + expensesThisMonthRequest.responseText;
+        }
+    };
+    expensesThisMonthRequest.open('GET', '/get_expenses_this_month', true);
+    expensesThisMonthRequest.send();
+
+    // Make an AJAX request to fetch net profit this month
+    var netProfitThisMonthRequest = new XMLHttpRequest();
+    netProfitThisMonthRequest.onreadystatechange = function () {
+        if (netProfitThisMonthRequest.readyState == 4 && netProfitThisMonthRequest.status == 200) {
+            document.getElementById('netThisMonth').innerText = 'Rs ' + netProfitThisMonthRequest.responseText;
+        }
+    };
+    netProfitThisMonthRequest.open('GET', '/get_net_profit_this_month', true);
+    netProfitThisMonthRequest.send();
+}
 
     // Call the function to update amounts when the page loads
     window.onload = function () {
         updateAmounts();
     };
+
+$(document).ready(function() {
+    // Function to fetch expenses and incomes data from the server
+    function fetchExpensesAndIncomes() {
+        $.get('/get_expenses_and_incomes', function(data) {
+            // Update expense table
+            $('.expense-table tbody').empty();
+            data.expense_data.forEach(function(expense) {
+                $('.expense-table tbody').append(
+                    '<tr>' +
+                    '<td>' + expense[0] + '</td>' +
+                    '<td>Rs ' + expense[1] + '</td>' +
+                    '</tr>'
+                );
+            });
+
+            // Update income table
+            $('.income-table tbody').empty();
+            data.income_data.forEach(function(income) {
+                $('.income-table tbody').append(
+                    '<tr>' +
+                    '<td>' + income[0] + '</td>' +
+                    '<td>Rs ' + income[1] + '</td>' +
+                    '</tr>'
+                );
+            });
+        });
+    }
+
+    // Fetch expenses and incomes data initially
+    fetchExpensesAndIncomes();
+
+    // Optionally, you can add a button or timer to trigger updates
+    // Example: Update every 5 seconds
+});
 </script>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
