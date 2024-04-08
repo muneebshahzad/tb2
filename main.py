@@ -316,20 +316,23 @@ def get_expense_ids(connection, income_type, payment_via, received_by):
 
 def add_transaction(connection, amount, income_id, source, description, payment_by, payment_to):
     cursor = connection.cursor()
-    global global_ids
     try:
         print(f"Before add_transaction line 112 - Income ID: {income_id}, Payment By: {payment_by}, Payment To: {payment_to}")
 
         submission_datetime = datetime.now()
 
         cursor.execute(
-            'INSERT INTO Transactions (amount, income_id, source, description, payment_by, payment_to, submission_datetime, type) '
-            'VALUES (%s, %s, %s, %s, %s, %s, %s, 1)',
-            amount, income_id, source, description, payment_by, payment_to, submission_datetime
+            'INSERT INTO Transactions (amount, income_id, source, description, payment_by, payment_to, submission_datetime, type) VALUES (%s, %s, %s, %s, %s, %s, %s, 1)',
+            (amount, income_id, source, description, payment_by, payment_to, submission_datetime)
         )
-        cursor.execute('UPDATE accounts SET accounts_balance = accounts_balance + %s WHERE account_id = %s', amount, payment_by)
-        global_ids = {'income_id': None, 'payment_by': None, 'payment_to': None}
+        print("executed")
+        cursor.execute('UPDATE accounts SET accounts_balance = accounts_balance + %s WHERE account_id = %s', (amount, payment_by))
 
+        if income_id ==2:
+            cursor.execute('UPDATE accounts SET accounts_balance = accounts_balance - %s WHERE accounts_name = %s',
+                           (amount, source))
+
+        global_ids = {'income_id': None, 'payment_by': None, 'payment_to': None}
 
         connection.commit()
         return True
@@ -341,7 +344,6 @@ def add_transaction(connection, amount, income_id, source, description, payment_
 
     finally:
         cursor.close()
-
 
 
 
@@ -393,7 +395,7 @@ def fetch_payment_to_data(connection, expense_type):
         elif expense_type == "Other":
             # Show "Other" option
             return ["Other"]
-        elif expense_type == "Employee Salary":
+        elif expense_type == "Employee Salary" or expense_type == "Employee Loan":
             cursor.execute('SELECT DISTINCT employee_name FROM employees')  # Use DISTINCT to eliminate duplicates
         elif expense_type == "Website & Advertising":
             # Display specific options for Website & Advertising
@@ -566,15 +568,16 @@ def add_expense_transaction(connection, amount, expense_id, source, description,
             INSERT INTO Transactions (amount, income_id, source, description, payment_by, payment_to, submission_datetime, type) 
             VALUES (%s, %s, %s, %s, %s, %s, %s, -1)
             ''',
-            amount, expense_id, source, description, payment_by, payment_to, submission_datetime
+            (amount, expense_id, source, description, payment_by, payment_to, submission_datetime)
         )
 
-        # If the source exists in accounts and is not "Bank" or "Cash", adjust its balance
-        if source_exists and expense_id !=4:
-            cursor.execute('UPDATE accounts SET accounts_balance = accounts_balance - %s WHERE accounts_name = %s', amount, source)
+        cursor.execute('UPDATE accounts SET accounts_balance = accounts_balance - %s WHERE account_id = %s',
+                       (amount, payment_by))
 
-        # For other types of expenses, deduct the balance from the specified payment_to account
-        cursor.execute('UPDATE accounts SET accounts_balance = accounts_balance - %s WHERE account_id = %s', amount, payment_by)
+        if expense_id ==5 or expense_id ==7:
+            cursor.execute('UPDATE accounts SET accounts_balance = accounts_balance + %s WHERE accounts_name = %s',
+                           (amount, source))
+
 
         connection.commit()
         global_ids_expense = {'expense_id': None, 'payment_by': None, 'payment_to': None}
@@ -633,6 +636,8 @@ def get_payment_to_data():
 
 @app.route('/')
 def home():
+    print(f'DATABASE_URL: {database_url}')
+
     return render_template("index.html", month=mon)
 
 
@@ -958,6 +963,55 @@ def fetch_income_this_month(connection):
     finally:
         cursor.close()
 
+@app.route('/get_net_profit_this_month', methods=['GET'])
+def get_net_profit_this_month():
+    connection = check_database_connection()
+
+    try:
+        if connection:
+            net_profit = fetch_net_profit_this_month(connection)
+            return jsonify(net_profit)
+
+        return jsonify(0)  # Default value if no connection
+
+    except Exception as e:
+        print(f"Error fetching net profit this month data: {str(e)}")
+        return jsonify(0)  # Default value in case of an error
+
+    finally:
+        if connection:
+            connection.close()
+
+
+def fetch_net_profit_this_month(connection):
+    cursor = connection.cursor()
+    net_profit = 0
+
+    try:
+        current_month = datetime.now().month
+        current_year = datetime.now().year
+
+        cursor.execute("""
+            SELECT SUM(amount * type)
+            FROM transactions
+            WHERE MONTH(submission_datetime) = %s
+            AND YEAR(submission_datetime) = %s
+            AND income_id != 7
+        """, (current_month, current_year))
+
+        data = cursor.fetchone()
+        net_profit = data[0] if data and data[0] is not None else 0
+        net_profit = round(net_profit, 1)
+        print(f"The net profit: {net_profit}")
+        return net_profit
+
+    except Exception as e:
+        print(f"Error fetching net profit this month data: {str(e)}")
+        return net_profit
+
+    finally:
+        cursor.close()
+
 
 @app.route('/get_cash_on_hand', methods=['GET'])
 def get_cash_on_hand():
@@ -987,7 +1041,8 @@ def fetch_cash_on_hand(connection):
                        "FROM accounts WHERE accounts_name IN ('Cash', 'Bank')")
         data = cursor.fetchone()
         cash_on_hand = data[0] if data and data[0] is not None else 0
-        return cash_on_hand
+        cash_on_hand_rounded = round(cash_on_hand, 1)  # Round to one decimal place
+        return cash_on_hand_rounded
 
     except Exception as e:
         print(f"Error fetching cash on hand data: {str(e)}")
@@ -995,7 +1050,6 @@ def fetch_cash_on_hand(connection):
 
     finally:
         cursor.close()
-
 
 
 ##HOME
@@ -1395,6 +1449,72 @@ def logout():
     return redirect(url_for('login'))
 
 #logout
+
+@app.route('/get_expenses_and_incomes', methods=['GET'])
+def get_expenses_and_incomes():
+    connection = check_database_connection()
+
+    try:
+        if connection:
+            expense_data = fetch_expenses(connection)
+            income_data = fetch_incomes(connection)
+            return jsonify({"expense_data": expense_data, "income_data": income_data})
+
+        return jsonify(0)  # Default value if no connection
+
+    except Exception as e:
+        print(f"Error fetching expenses and incomes data: {str(e)}")
+        return jsonify(0)  # Default value in case of an error
+
+    finally:
+        if connection:
+            connection.close()
+
+def fetch_expenses(connection):
+    cursor = connection.cursor()
+
+    try:
+        cursor.execute("""
+                    SELECT Income_Expense_Name, SUM(CAST(Amount AS FLOAT)) AS Amount
+                    FROM TransactionDetails 
+                    WHERE Amount < 0
+                    GROUP BY Income_Expense_Name
+                    ORDER BY Amount ASC
+                """)
+
+        expense_data = cursor.fetchall()
+        return expense_data
+
+    except Exception as e:
+        print(f"Error fetching expenses data: {str(e)}")
+        return []
+
+    finally:
+        cursor.close()
+
+
+def fetch_incomes(connection):
+    cursor = connection.cursor()
+
+    try:
+        cursor.execute("""
+                    SELECT Income_Expense_Name, SUM(CAST(Amount AS FLOAT)) AS Amount
+                    FROM TransactionDetails 
+                    WHERE Amount > 0
+                    GROUP BY Income_Expense_Name
+                    ORDER BY Amount DESC
+                """)
+
+        income_data = cursor.fetchall()
+        return income_data
+
+    except Exception as e:
+        print(f"Error fetching incomes data: {str(e)}")
+        return []
+
+    finally:
+        cursor.close()
+
 
 if __name__ == '__main__':
     app.run(debug=True)
