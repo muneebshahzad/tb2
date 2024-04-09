@@ -1472,18 +1472,23 @@ def get_expenses_and_incomes():
 
 def fetch_expenses(connection):
     cursor = connection.cursor()
-
+    current_month = datetime.now().month
+    current_year = datetime.now().year
     try:
         cursor.execute("""
                     SELECT Income_Expense_Name, SUM(CAST(Amount AS FLOAT)) AS Amount
                     FROM TransactionDetails 
-                    WHERE Amount < 0
+                    WHERE Amount < 0 AND MONTH(Payment_Date) = %s
+                    AND YEAR(Payment_Date) = %s
                     GROUP BY Income_Expense_Name
                     ORDER BY Amount ASC
-                """)
+                """,(current_month, current_year))
 
         expense_data = cursor.fetchall()
         return expense_data
+
+
+
 
     except Exception as e:
         print(f"Error fetching expenses data: {str(e)}")
@@ -1495,15 +1500,17 @@ def fetch_expenses(connection):
 
 def fetch_incomes(connection):
     cursor = connection.cursor()
-
+    current_month = datetime.now().month
+    current_year = datetime.now().year
     try:
         cursor.execute("""
                     SELECT Income_Expense_Name, SUM(CAST(Amount AS FLOAT)) AS Amount
                     FROM TransactionDetails 
-                    WHERE Amount > 0
+                    WHERE Amount > 0 AND MONTH(Payment_Date) = %s
+                    AND YEAR(Payment_Date) = %s
                     GROUP BY Income_Expense_Name
-                    ORDER BY Amount DESC
-                """)
+                    ORDER BY Amount ASC
+                """,(current_month, current_year))
 
         income_data = cursor.fetchall()
         return income_data
