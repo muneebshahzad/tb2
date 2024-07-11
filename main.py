@@ -192,11 +192,17 @@ def fetch_payment_to_data(connection, expense_type):
         elif expense_type == "Employee Expense":
             # Display specific options for Employee Expense
             return ["Food", "Other"]
+        elif expense_type == "Logistics":
+            # Display specific options for Employee Expense
+            return ["Uber", "Courier"]
+        elif expense_type == "Food":
+            # Display specific options for Employee Expense
+            return ["Food"]
         elif expense_type == "Office expenses and supplies":
             # Display specific options for Office expenses and supplies
             return ["Rent", "Utilities", "Other"]
         else:
-            return []  # Handle other cases or return an empty list
+            return ["Other"]  # Handle other cases or return an empty list
 
         data = [row[0] for row in cursor.fetchall()]
         return data
