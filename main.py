@@ -192,15 +192,15 @@ def fetch_payment_to_data(connection, expense_type):
         elif expense_type == "Employee Expense":
             # Display specific options for Employee Expense
             return ["Food", "Other"]
+        elif expense_type == "Office expenses and supplies":
+            # Display specific options for Office expenses and supplies
+            return ["Rent", "Utilities", "Other"]
         elif expense_type == "Logistics":
             # Display specific options for Employee Expense
             return ["Uber", "Courier"]
         elif expense_type == "Food":
             # Display specific options for Employee Expense
             return ["Food"]
-        elif expense_type == "Office expenses and supplies":
-            # Display specific options for Office expenses and supplies
-            return ["Rent", "Utilities", "Other"]
         else:
             return ["Other"]  # Handle other cases or return an empty list
 
@@ -209,10 +209,11 @@ def fetch_payment_to_data(connection, expense_type):
 
     except Exception as e:
         print(f"Error fetching payment to data: {str(e)}")
+        cursor.close()
         return []
 
     finally:
-        cursor.close()
+        pass
 
 
 def add_X_to_accounts(connection, received_by):
