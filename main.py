@@ -1,49 +1,511 @@
-import pyodbc
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
-import datetime, random
-from datetime import datetime
+import asyncio
 import os
-import pymssql
+import smtplib
+import time
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from flask import Flask, render_template, jsonify, request, flash, redirect, url_for, abort
+import datetime, requests
+from datetime import datetime
+import pymssql, shopify
+import aiohttp
 import lazop
-client = lazop.LazopClient('https://api.daraz.pk/rest', '501554', 'nrP3XFN7ChZL53cXyVED1yj4iGZZtlcD')
+import aiohttp
+
 app = Flask(__name__)
-@app.route('/d')
+app.debug = True
+app.secret_key = os.getenv('APP_SECRET_KEY', 'default_secret_key')  # Use environment variable
+
+order_details = []
+def get_db_connection():
+    server = os.getenv('DB_SERVER')
+    database = os.getenv('DB_DATABASE')
+    username = os.getenv('DB_USERNAME')
+    password = os.getenv('DB_PASSWORD')
+    try:
+        connection = pymssql.connect(server=server, user=username, password=password, database=database)
+        return connection
+    except pymssql.Error as e:
+        print(f"Error connecting to the database: {str(e)}")
+        return None
+
+@app.route("/submit_tasks", methods=["POST"])
+def submit_tasks():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    today = datetime.date.today()
+    cursor.execute("SELECT * FROM tasks WHERE Date = %s", (today,))
+    existing_tasks = cursor.fetchone()
+
+    if existing_tasks:
+        flash("Tasks have already been submitted for today.", "error")
+        return redirect(url_for("index"))
+
+    selected_tasks = {}
+    task_names = ["Confirm_Pending_Orders", "Track_Dispatched_Orders", "Contact_Abandoned_Orders", "Email_Courier",
+                  "Track_Daraz_Orders", "Solve_Customer_Complaints", "Call_Delivered_Orders", "Add_Reviews_to_Shopify",
+                  "Add_Reviews_to_Google_Maps", "Answer_Whatsapp_Messages_Calls", "Answer_Instagram_Facebook_Messages_Comments",
+                  "Answer_Daraz_Messages", "Answer_Phone_Calls"]
+
+    for task_name in task_names:
+        selected_tasks[task_name] = 1 if task_name in request.form else 0
+
+    cursor.execute("""
+        INSERT INTO tasks (Date, Confirm_Pending_Orders, Track_Dispatched_Orders, Contact_Abandoned_Orders, Email_Courier,
+        Track_Daraz_Orders, Solve_Customer_Complaints, Call_Delivered_Orders, Add_Reviews_to_Shopify,
+        Add_Reviews_to_Google_Maps, Answer_Whatsapp_Messages_Calls, Answer_Instagram_Facebook_Messages_Comments,
+        Answer_Daraz_Messages, Answer_Phone_Calls)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """, (today, *selected_tasks.values()))
+
+    conn.commit()
+    conn.close()
+
+    flash("Tasks submitted successfully!", "success")
+    return redirect(url_for("index"))
+
+@app.route('/send-email', methods=['POST'])
+def send_email():
+    data = request.get_json()
+    to_emails = data.get('to', [])
+    cc_emails = data.get('cc', [])
+    subject = data.get('subject', '')
+    body = data.get('body', '')
+
+    try:
+        # SMTP server configuration
+        smtp_server = 'smtp.gmail.com'
+        smtp_port = 587
+        smtp_user = os.getenv('SMTP_USER')  # Use environment variable
+        smtp_password = os.getenv('SMTP_PASSWORD')  # Use environment variable
+
+        # Create the message
+        msg = MIMEText(body)
+        msg['From'] = smtp_user
+        msg['To'] = ', '.join(to_emails)
+        msg['Cc'] = ', '.join(cc_emails)
+        msg['Subject'] = subject
+
+        # Connect to the SMTP server and send email
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(smtp_user, smtp_password)
+        server.sendmail(smtp_user, to_emails + cc_emails, msg.as_string())
+        server.quit()
+
+        return jsonify({'message': 'Email sent successfully'}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+async def fetch_tracking_data(session, tracking_number):
+
+    api_key = os.getenv('LEOPARD_API_KEY')
+    api_password = os.getenv('LEOPARD_PASSWORD')
+    url = f"https://merchantapi.leopardscourier.com/api/trackBookedPacket/?api_key={api_key}&api_password={api_password}&track_numbers={tracking_number}"
+    async with session.get(url) as response:
+        return await response.json()
+
+async def process_line_item(session, line_item, fulfillments):
+    if line_item.fulfillment_status is None and line_item.fulfillable_quantity == 0:
+        return []
+
+    tracking_info = []
+
+    if line_item.fulfillment_status == "fulfilled":
+        for fulfillment in fulfillments:
+            if fulfillment.status == "cancelled":
+                continue
+            for item in fulfillment.line_items:
+                if item.id == line_item.id:
+                    tracking_number = fulfillment.tracking_number
+                    data = await fetch_tracking_data(session, tracking_number)
+                    if data['status'] == 1 and not data['error']:
+                        packet_list = data['packet_list']
+                        if packet_list:
+                            tracking_details = packet_list[0].get('Tracking Detail', [])
+                            if tracking_details:
+                                final_status = tracking_details[-1]['Status']
+                                keywords = ["Return", "hold", "UNTRACEABLE"]
+                                if not any(
+                                        kw.lower() in final_status.lower() for kw in
+                                        ["delivered", "returned to shipper"]):
+                                    for detail in tracking_details:
+                                        status = detail['Status']
+                                        if status == 'Pending':
+                                            reason = detail['Reason']
+                                        else:
+                                            reason = 'N/A'
+                                        if any(kw in status for kw in keywords) or any(kw in reason for kw in keywords):
+                                            final_status = "Being Return"
+                                            break
+                            else:
+                                final_status = "Booked"
+                                print("No tracking details available.")
+                        else:
+                            final_status = "Booked"
+                            print("No packets found.")
+                    else:
+                        final_status = "N/A"
+                        print("Error fetching data.")
+
+                    # Track quantity for each tracking number
+                    tracking_info.append({
+                        'tracking_number': tracking_number,
+                        'status': final_status,
+                        'quantity': item.quantity
+                    })
+
+    return tracking_info if tracking_info else [
+        {"tracking_number": "N/A", "status": "Un-Booked", "quantity": line_item.quantity}]
+
+async def process_order(session, order):
+    order_start_time = time.time()
+
+    input_datetime_str = order.created_at
+    parsed_datetime = datetime.fromisoformat(input_datetime_str[:-6])
+    formatted_datetime = parsed_datetime.strftime("%b %d, %Y")
+
+    try:
+        status = (order.fulfillment_status).title()
+    except:
+        status = "Un-fulfilled"
+    print(order)
+    tags = []
+    try:
+        name = order.billing_address.name
+    except AttributeError:
+        name = " "
+        print("Error retrieving name")
+
+    try:
+        address = order.billing_address.address1
+    except AttributeError:
+        address = " "
+        print("Error retrieving address")
+
+    try:
+        city = order.billing_address.city
+    except AttributeError:
+        city = " "
+        print("Error retrieving city")
+
+    try:
+        phone = order.billing_address.phone
+    except AttributeError:
+        phone = " "
+        print("Error retrieving phone")
+
+    customer_details = {
+        "name": name,
+        "address": address,
+        "city": city,
+        "phone": phone
+    }
+    order_info = {
+        'order_id': order.order_number,
+        'tracking_id': 'N/A',
+        'created_at': formatted_datetime,
+        'total_price': order.total_price,
+        'line_items': [],
+        'financial_status': (order.financial_status).title(),
+        'fulfillment_status': status,
+        'customer_details' : customer_details,
+        'tags': order.tags.split(", "),
+        'id': order.id
+    }
+    print(order.tags)
+
+    tasks = []
+    for line_item in order.line_items:
+        tasks.append(process_line_item(session, line_item, order.fulfillments))
+
+    results = await asyncio.gather(*tasks)
+    variant_name = ""
+    for tracking_info_list, line_item in zip(results, order.line_items):
+        if tracking_info_list is None:
+            continue
+
+        if line_item.product_id is not None:
+            product = shopify.Product.find(line_item.product_id)
+            if product and product.variants:
+                for variant in product.variants:
+                    if variant.id == line_item.variant_id:
+                        if variant.image_id is not None:
+                            images = shopify.Image.find(image_id=variant.image_id, product_id=line_item.product_id)
+                            variant_name = line_item.variant_title
+                            for image in images:
+                                if image.id == variant.image_id:
+                                    image_src = image.src
+                        else:
+                            variant_name = ""
+                            image_src = product.image.src
+        else:
+            image_src = "https://static.thenounproject.com/png/1578832-200.png"
+
+        for info in tracking_info_list:
+            order_info['line_items'].append({
+                'fulfillment_status': line_item.fulfillment_status,
+                'image_src': image_src,
+                'product_title': line_item.title + " - " + variant_name ,
+                'quantity': info['quantity'],
+                'tracking_number': info['tracking_number'],
+                'status': info['status']
+            })
+            order_info['status'] = info['status']
+
+    order_end_time = time.time()
+    print(f"Time taken to process order {order.order_number}: {order_end_time - order_start_time:.2f} seconds")
+
+    return order_info
+
+
+
+@app.route('/apply_tag', methods=['POST'])
+def apply_tag():
+    data = request.json
+    order_id = data.get('order_id')
+    tag = data.get('tag')
+
+    # Get today's date in YYYY-MM-DD format
+    today_date = datetime.now().strftime('%Y-%m-%d')
+    tag_with_date = f"{tag} ({today_date})"
+
+    try:
+        order = shopify.Order.find(order_id)
+        if order.tags:
+            tags = order.tags.split(", ")
+            # tags = tags.remove("Leopards Courier")
+        else:
+            tags = []
+        if tag_with_date not in tags:
+            tags.append(tag_with_date)
+        order.tags = ", ".join(tags)
+        order.save()
+        return jsonify({"success": True})
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
+async def getShopifyOrders():
+
+    global order_details
+    orders = shopify.Order.find(limit=250, order='created_at DESC')
+    order_details = []
+    total_start_time = time.time()
+
+    async with aiohttp.ClientSession() as session:
+        tasks = [process_order(session, order) for order in orders]
+        order_details = await asyncio.gather(*tasks)
+
+    total_end_time = time.time()
+    print(f"Total time taken to process all orders: {total_end_time - total_start_time:.2f} seconds")
+
+    return order_details
+
+@app.route("/track")
+def tracking():
+    global order_details
+    return render_template("track.html", order_details=order_details)
+
+@app.route("/")
+def index():
+    today = datetime.now().date()
+
+    conn = get_db_connection()
+    cursor = conn.cursor(as_dict=True)
+
+    cursor.execute("SELECT * FROM tasks WHERE Date = %s", (today,))
+    tasks = cursor.fetchone()
+
+    cursor.execute("SELECT Start FROM daily_sessions WHERE Date = %s", (today,))
+    session_result = cursor.fetchone()
+
+    conn.close()
+
+    should_show_start_modal = "true" if not session_result else "false"
+    should_show_resume_modal = "false" if should_show_start_modal == "true" else "true"
+
+    start_time = session_result['Start'] if session_result else None
+
+    return render_template("index.html", tasks=tasks, today=today,
+                           should_show_start_modal=should_show_start_modal,
+                           should_show_resume_modal=should_show_resume_modal,
+                           start_time=start_time)
+
+@app.route('/start_timer', methods=['POST'])
+def start_timer():
+    today = datetime.now().date()
+    start_time = datetime.now().time()
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO daily_sessions (Date, Start) VALUES (%s, %s)", (today, start_time))
+    conn.commit()
+    conn.close()
+
+    return jsonify({"status": "started"})
+
+@app.route('/resume_timer', methods=['POST'])
+def resume_timer():
+    today = datetime.datetime.now().date()
+    resume_time = datetime.datetime.now().time()
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT MAX(Lap_Number) FROM timer_logs WHERE Date = %s", (today,))
+    max_lap = cursor.fetchone()[0]
+    new_lap_number = max_lap + 1 if max_lap is not None else 1
+
+    cursor.execute("INSERT INTO timer_logs (Date, Lap_Number, Resume) VALUES (%s, %s, %s)",
+                   (today, new_lap_number, resume_time))
+    conn.commit()
+    conn.close()
+
+    return jsonify({"status": "resumed"})
+
+@app.route('/get_elapsed_time', methods=['GET'])
+def get_elapsed_time():
+    today = datetime.now().date()
+
+    conn = get_db_connection()
+    cursor = conn.cursor(as_dict=True)
+    cursor.execute("SELECT Start FROM daily_sessions WHERE Date = %s", (today,))
+    session_result = cursor.fetchone()
+
+    if session_result:
+        start_time = session_result['Start']
+        start_datetime = datetime.datetime.combine(today, start_time)
+        current_datetime = datetime.datetime.now()
+
+        cursor.execute("SELECT Resume FROM timer_logs WHERE Date = %s ORDER BY Lap_Number", (today,))
+        laps = cursor.fetchall()
+        total_pause_time = sum([(current_datetime - datetime.datetime.combine(today, lap['Resume'])).total_seconds() for lap in laps])
+
+        elapsed_seconds = int((current_datetime - start_datetime).total_seconds() - total_pause_time)
+    else:
+        elapsed_seconds = 0
+
+    conn.close()
+    return jsonify({"elapsed_seconds": elapsed_seconds})
+
+
+def get_daraz_orders(statuses):
+    try:
+        access_token = '50000601237osiZ0F1HkTZVojWcjq6szVDmDPjxiuvoEbCSvB15ff2bc8xtn4m'
+        client = lazop.LazopClient('https://api.daraz.pk/rest', '501554', 'nrP3XFN7ChZL53cXyVED1yj4iGZZtlcD')
+
+        all_orders = []
+
+        for status in statuses:
+            request = lazop.LazopRequest('/orders/get', 'GET')
+            request.add_api_param('sort_direction', 'DESC')
+            request.add_api_param('update_before', '2025-02-10T16:00:00+08:00')
+            request.add_api_param('offset', '0')
+            request.add_api_param('created_before', '2025-02-10T16:00:00+08:00')
+            request.add_api_param('created_after', '2017-02-10T09:00:00+08:00')
+            request.add_api_param('limit', '50')
+            request.add_api_param('update_after', '2017-02-10T09:00:00+08:00')
+            request.add_api_param('sort_by', 'updated_at')
+            request.add_api_param('status', status)
+            request.add_api_param('access_token', access_token)
+
+            response = client.execute(request)
+            darazOrders = response.body.get('data', {}).get('orders', [])
+
+            for order in darazOrders:
+                print(order)
+                order_id = order.get('order_id', 'Unknown')
+
+                item_request = lazop.LazopRequest('/order/items/get', 'GET')
+                item_request.add_api_param('order_id', order_id)
+                item_request.add_api_param('access_token', access_token)
+
+                item_response = client.execute(item_request)
+                try:
+                    items = item_response.body.get('data', [])
+                    if not items:
+                        raise ValueError("No items found in the response.")
+                except (AttributeError, ValueError) as e:
+                    print(f"Error retrieving items: {e}")
+                    items = []
+
+                item_details = []
+                for item in items:
+                    tracking_num = item.get('tracking_code', 'Unknown')
+
+                    tracking_req = lazop.LazopRequest('/logistic/order/trace', 'GET')
+                    tracking_req.add_api_param('order_id', order_id)
+                    tracking_req.add_api_param('access_token', access_token)
+                    tracking_response = client.execute(tracking_req)
+
+                    tracking_data = tracking_response.body.get('result', {})
+                    packages = tracking_data.get('data', [{}])[0].get('package_detail_info_list', [])
+
+                    track_status = "N/A"
+                    for package in packages:
+                        if package.get("tracking_number") == tracking_num:
+                            try:
+                                track_status = package.get('logistic_detail_info_list', [{}])[-1].get('title', "N/A")
+                            except (IndexError, KeyError) as e:
+                                print(f"Error processing tracking data: {e}")
+                                track_status = "N/A"
+                            print("MATCHED")
+                            break
+
+                    item_detail = {
+                        'item_image': item.get('product_main_image', 'N/A'),
+                        'item_title': item.get('name', 'Unknown'),
+                        'quantity': item.get('variation', 'N/A'),
+                        'tracking_number': item.get('tracking_code', 'N/A'),
+                        'status': track_status
+                    }
+                    item_details.append(item_detail)
+
+                filtered_order = {
+                    'order_id': order.get('order_id', 'Unknown'),
+                    'customer': {
+                        'name': f"{order.get('customer_first_name', 'Unknown')} {order.get('customer_last_name', 'Unknown')}",
+                        'address': order.get('address_shipping', {}).get('address', 'N/A'),
+                        'phone': order.get('address_shipping', {}).get('phone', 'N/A')
+                    },
+                    'status': status.replace('_', ' ').title(),
+                    'date': format_date(order.get('created_at', 'N/A')),
+                    'total_price': order.get('price', '0.00'),
+                    'items_list': item_details,
+                }
+                all_orders.append(filtered_order)
+
+        return all_orders
+    except Exception as e:
+        print(f"Error fetching darazOrders: {e}")
+        return []
+
+
+@app.route('/daraz')
 def daraz():
-    # Render the daraz.html template
-    return render_template('daraz.html')
+    statuses = ['shipped','pending','ready_to_ship']
+    darazOrders = get_daraz_orders(statuses)
+    return render_template('daraz.html', darazOrders=darazOrders)
 
+def format_date(date_str):
+    # Parse the date string
+    date_obj = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S %z")
+    # Format the date object to only show the date
+    return date_obj.strftime("%Y-%m-%d")
 
-@app.route('/daraz', methods=['GET'])
-def daraz_callback():
-    # Extract the authorization code from the callback URL
-    code = request.args.get('code')
+@app.route('/refresh', methods=['POST'])
+def refresh_data():
+    global order_details
+    try:
+        order_details = asyncio.run(getShopifyOrders())
+        return jsonify({'message': 'Data refreshed successfully'})
+    except Exception as e:
+        print(f"Error refreshing data: {e}")
+        return jsonify({'message': 'Failed to refresh data'}), 500
 
-    # Create a Lazop request to exchange authorization code for access token
-    request = lazop.LazopRequest('/auth/token/create', 'GET')
-    request.add_api_param('code', code)
-
-    # Execute the request and get the response
-    response = client.execute(request)
-
-    # Return the access token response
-    return jsonify(response.body)
-
-
-# Accessing environment variable
-database_url = os.environ.get('DATABASE_URL')
-
-# Print the value
-print(f'DATABASE_URL: {database_url}')
-app = Flask(__name__)
-app.secret_key = 'your_secret_key'  # Change this to a secure secret key
-
-# Store IDs globally for reuse
-global_ids = {'income_id': None, 'payment_by': None, 'payment_to': None}
-
-# Store IDs globally for reuse
-global_ids_expense = {'expense_id': None, 'payment_by': None, 'payment_to': None}
-
-mon = datetime.now().strftime("%B")
 def check_database_connection():
     server = 'tickbags.database.windows.net'
     database = 'TickBags'
@@ -59,1476 +521,66 @@ def check_database_connection():
         print(f"Error connecting to the database: {str(e)}")
         return None
 
-def execute_query(connection, query, params=None, fetchall=False, as_dict=False):
-    cursor = connection.cursor()
+def fetch_transaction_data():
+    connection = check_database_connection()
+    if connection is None:
+        return []
+    print("CONNECTED TO DATABASE")
 
     try:
-        if params:
-            cursor.execute(query, params)
-        else:
+        with connection.cursor(as_dict=True) as cursor:
+            query = 'SELECT * FROM transactiondetails3 ORDER BY Payment_Date desc'
             cursor.execute(query)
-
-        if fetchall:
-            if as_dict:
-                columns = [column[0] for column in cursor.description]
-                return [dict(zip(columns, row)) for row in cursor.fetchall()]
-            else:
-                return cursor.fetchall()
-        else:
-            return None
-
-    except Exception as e:
-        print(f"Error executing query: {str(e)}")
-        return None
-
-    finally:
-        cursor.close()
-
-@app.before_request
-def require_login():
-    print('Endpoint:', request.endpoint)
-    allowed_routes = ['login', 'static']
-    if request.endpoint not in allowed_routes and 'user_id' not in session:
-        print('Redirecting to login')
-        return redirect(url_for('login'))
-##LOGIN
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        print('Login POST request received')
-        username = request.form.get('username')
-        password = request.form.get('password')
-
-        # Assuming you have a SQL Server database connection
-        connection = check_database_connection()
-
-        try:
-            if connection:
-                cursor = connection.cursor()
-                query = "SELECT * FROM users WHERE username = %s AND password = %s"
-                cursor.execute(query, (username, password))
-                user = cursor.fetchone()
-
-                if user:
-                    # If the user exists, store their information in the session
-                    session['user_id'] = user[0]  # Assuming user_id is the first column
-                    session['username'] = user[1]  # Assuming username is the second column
-                    # You can store more user-related information in the session if needed
-
-                    return redirect(url_for('home'))  # Redirect to the home page or another authenticated route
-                else:
-                    # If the login fails, you can show an error message
-                    error_message = "Invalid username or password"
-                    return render_template('Login1.html', error_message=error_message)
-            else:
-                return "Error: No database connection"
-
-        except Exception as e:
-            print(f"Error during login: {str(e)}")
-            return "Error during login"
-
-        finally:
-            if connection:
-                connection.close()
-
-    return render_template('Login1.html')
-
-def get_income_types(connection):
-    cursor = connection.cursor()
-    cursor.execute('SELECT * FROM income_type')
-    types = cursor.fetchall()
-    cursor.close()
-    return types
-
-def get_expense_types(connection):
-    cursor = connection.cursor()
-    cursor.execute('SELECT * FROM expense_type')
-    types = cursor.fetchall()
-    cursor.close()
-    return types
-
-
-def fetch_source_data(connection, income_type):
-    cursor = connection.cursor()
-
-    try:
-        if income_type == "Sales":
-            cursor.execute('SELECT vendor_name FROM income_vendors')
-        elif income_type == "Investments":
-            cursor.execute('SELECT owner_name FROM owners')
-        elif income_type == "Loans Recovery":
-            cursor.execute('SELECT accounts_name FROM accounts')
-        else:
-            return []  # Handle other cases or return an empty list
-
-        data = [row[0] for row in cursor.fetchall()]
-        return data
-
-    except Exception as e:
-        print(f"Error fetching source data: {str(e)}")
+            transactions = cursor.fetchall()
+            return transactions
+    except pymssql.Error as e:
+        print(f"Error fetching data from the database: {str(e)}")
         return []
-
     finally:
-        cursor.close()
+        connection.close()
 
-def fetch_payment_to_data(connection, expense_type):
-    cursor = connection.cursor()
+@app.route('/finance_report')
+def finance_report():
+    transactions = fetch_transaction_data()
 
-    try:
-        if expense_type == "Profit Withdrawal":
-            cursor.execute('SELECT DISTINCT owner_name FROM owners')  # Use DISTINCT to eliminate duplicates
-        elif expense_type == "Other":
-            # Show "Other" option
-            return ["Other"]
-        elif expense_type == "Employee Salary" or expense_type == "Employee Loan":
-            cursor.execute('SELECT DISTINCT employee_name FROM employees')  # Use DISTINCT to eliminate duplicates
-        elif expense_type == "Website & Advertising":
-            # Display specific options for Website & Advertising
-            return ["Facebook", "Shopify", "Google", "Godaddy"]
-        elif expense_type == "Raw Material Purchasing":
-            # Display options from expense_title in expense_vendors for Raw Material Purchasing
-            cursor.execute('SELECT DISTINCT expense_title FROM expense_vendors ')
-        elif expense_type == "Employee Expense":
-            # Display specific options for Employee Expense
-            return ["Food", "Other"]
-        elif expense_type == "Office expenses and supplies":
-            # Display specific options for Office expenses and supplies
-            return ["Rent", "Utilities", "Other"]
-        elif expense_type == "Logistics":
-            # Display specific options for Employee Expense
-            return ["Uber", "Courier"]
-        elif expense_type == "Food":
-            # Display specific options for Employee Expense
-            return ["Food"]
-        else:
-            return ["Other"]  # Handle other cases or return an empty list
+    return render_template('finance_report.html', transactions=transactions)
 
-        data = [row[0] for row in cursor.fetchall()]
-        return data
+@app.route('/addTransaction')
+def addTransaction():
 
-    except Exception as e:
-        print(f"Error fetching payment to data: {str(e)}")
-        cursor.close()
-        return []
+    return render_template('addTransaction.html')
 
-    finally:
-        pass
+def run_async(func, *args, **kwargs):
+    return asyncio.run(func(*args, **kwargs))
+@app.route('/track/<tracking_num>')
+def displayTracking(tracking_num):
+    print(f"Tracking Number: {tracking_num}")  # Debug line
 
+    async def async_func():
+        async with aiohttp.ClientSession() as session:
+            return await fetch_tracking_data(session, tracking_num)
 
-def add_X_to_accounts(connection, received_by):
-    cursor = connection.cursor()
+    data = run_async(async_func)
 
-    try:
-        cursor.execute('INSERT INTO accounts (accounts_name) VALUES (%s)', received_by)
-        connection.commit()
-        return True
+    return render_template('trackingdata.html', data=data)
 
-    except Exception as e:
-        print(f"Error adding 'X' to accounts: {str(e)}")
-        connection.rollback()
-        return False
 
-    finally:
-        cursor.close()
+shop_url = os.getenv('SHOP_URL')
+api_key = os.getenv('API_KEY')
+password = os.getenv('PASSWORD')
+shopify.ShopifyResource.set_site(shop_url)
+shopify.ShopifyResource.set_user(api_key)
+shopify.ShopifyResource.set_password(password)
+order_details = asyncio.run(getShopifyOrders())
 
+if __name__ == "__main__":
+    shop_url = os.getenv('SHOP_URL')
+    api_key = os.getenv('API_KEY')
+    password = os.getenv('PASSWORD')
+    shopify.ShopifyResource.set_site(shop_url)
+    shopify.ShopifyResource.set_user(api_key)
+    shopify.ShopifyResource.set_password(password)
 
-def get_ids(connection, income_type, payment_via, received_by):
-    global global_ids  # Use the global variable
+    app.run(port=5001)
 
-    cursor = connection.cursor()
 
-    try:
-        income_id, payment_by, payment_to = None, None, None
-
-        if global_ids['income_id'] is not None:
-            # If values are already fetched, use them
-            income_id = global_ids['income_id']
-            payment_by = global_ids['payment_by']
-            payment_to = global_ids['payment_to']
-        else:
-            # Fetch values only if not already fetched
-            cursor.execute('SELECT income_id FROM income_type WHERE income_title = %s', income_type)
-            result = cursor.fetchone()
-            if result:
-                income_id = result[0]
-
-            cursor.execute('SELECT account_id FROM accounts WHERE accounts_name = %s', payment_via)
-            result = cursor.fetchone()
-            if result:
-                payment_by = result[0]
-
-            cursor.execute('SELECT account_id FROM accounts WHERE accounts_name = %s', received_by)
-            result = cursor.fetchone()
-            if result:
-                payment_to = result[0]
-
-            # Update global variable with fetched values
-            global_ids = {'income_id': income_id, 'payment_by': payment_by, 'payment_to': payment_to}
-
-        print(f"After get_ids  line 96- Income ID: {income_id}, Payment By: {payment_by}, Payment To: {payment_to}")
-
-        return {'income_id': income_id, 'payment_by': payment_by, 'payment_to': payment_to}
-
-    except Exception as e:
-        print(f"Error fetching IDs: {str(e)}")
-        return {'income_id': None, 'payment_by': None, 'payment_to': None}
-
-    finally:
-        cursor.close()
-
-def get_expense_ids(connection, income_type, payment_via, received_by):
-    global global_ids  # Use the global variable
-
-    cursor = connection.cursor()
-
-    try:
-        income_id, payment_by, payment_to = None, None, None
-
-        if global_ids['income_id'] is not None:
-            # If values are already fetched, use them
-            income_id = global_ids['income_id']
-            payment_by = global_ids['payment_by']
-            payment_to = global_ids['payment_to']
-        else:
-            # Fetch values only if not already fetched
-            cursor.execute('SELECT expense_id FROM expense_type WHERE expense_title = %s', income_type)
-            result = cursor.fetchone()
-            if result:
-                income_id = result[0]
-
-            cursor.execute('SELECT account_id FROM accounts WHERE accounts_name = %s', payment_via)
-            result = cursor.fetchone()
-            if result:
-                payment_by = result[0]
-
-            cursor.execute('SELECT account_id FROM accounts WHERE accounts_name = %s', received_by)
-            result = cursor.fetchone()
-            if result:
-                payment_to = result[0]
-
-            # Update global variable with fetched values
-            global_ids = {'income_id': income_id, 'payment_by': payment_by, 'payment_to': payment_to}
-
-        print(f"After get_ids  line 96- Income ID: {income_id}, Payment By: {payment_by}, Payment To: {payment_to}")
-
-        return {'income_id': income_id, 'payment_by': payment_by, 'payment_to': payment_to}
-
-    except Exception as e:
-        print(f"Error fetching IDs: {str(e)}")
-        return {'income_id': None, 'payment_by': None, 'payment_to': None}
-
-    finally:
-        cursor.close()
-
-def add_transaction(connection, amount, income_id, source, description, payment_by, payment_to):
-    cursor = connection.cursor()
-    try:
-        print(f"Before add_transaction line 112 - Income ID: {income_id}, Payment By: {payment_by}, Payment To: {payment_to}")
-
-        submission_datetime = datetime.now()
-
-        cursor.execute(
-            'INSERT INTO Transactions (amount, income_id, source, description, payment_by, payment_to, submission_datetime, type) VALUES (%s, %s, %s, %s, %s, %s, %s, 1)',
-            (amount, income_id, source, description, payment_by, payment_to, submission_datetime)
-        )
-        print("executed")
-        cursor.execute('UPDATE accounts SET accounts_balance = accounts_balance + %s WHERE account_id = %s', (amount, payment_by))
-
-        if income_id ==2:
-            cursor.execute('UPDATE accounts SET accounts_balance = accounts_balance - %s WHERE accounts_name = %s',
-                           (amount, source))
-
-        global_ids = {'income_id': None, 'payment_by': None, 'payment_to': None}
-
-        connection.commit()
-        return True
-
-    except Exception as e:
-        print(f"Error adding transaction: {str(e)}")
-        connection.rollback()
-        return False
-
-    finally:
-        cursor.close()
-
-
-
-
-def get_income_types(connection):
-    cursor = connection.cursor()
-    cursor.execute('SELECT * FROM income_type')
-    types = cursor.fetchall()
-    cursor.close()
-    return types
-
-def get_expense_types(connection):
-    cursor = connection.cursor()
-    cursor.execute('SELECT * FROM expense_type')
-    types = cursor.fetchall()
-    cursor.close()
-    return types
-
-
-def fetch_source_data(connection, income_type):
-    cursor = connection.cursor()
-
-    try:
-        if income_type == "Sales":
-            cursor.execute('SELECT vendor_name FROM income_vendors')
-        elif income_type == "Investments":
-            cursor.execute('SELECT owner_name FROM owners')
-        elif income_type == "Loans Recovery":
-            cursor.execute('SELECT accounts_name FROM accounts')
-        else:
-            return []  # Handle other cases or return an empty list
-
-        data = [row[0] for row in cursor.fetchall()]
-        return data
-
-    except Exception as e:
-        print(f"Error fetching source data: {str(e)}")
-        return []
-
-    finally:
-        cursor.close()
-
-def fetch_payment_to_data(connection, expense_type):
-    cursor = connection.cursor()
-
-    try:
-        if expense_type == "Profit Withdrawal":
-            cursor.execute('SELECT DISTINCT owner_name FROM owners')  # Use DISTINCT to eliminate duplicates
-        elif expense_type == "Other":
-            # Show "Other" option
-            return ["Other"]
-        elif expense_type == "Employee Salary" or expense_type == "Employee Loan":
-            cursor.execute('SELECT DISTINCT employee_name FROM employees')  # Use DISTINCT to eliminate duplicates
-        elif expense_type == "Website & Advertising":
-            # Display specific options for Website & Advertising
-            return ["Facebook", "Shopify", "Google", "Godaddy"]
-        elif expense_type == "Raw Material Purchasing":
-            # Display options from expense_title in expense_vendors for Raw Material Purchasing
-            cursor.execute('SELECT DISTINCT expense_title FROM expense_vendors ')
-        elif expense_type == "Employee Expense":
-            # Display specific options for Employee Expense
-            return ["Food", "Other"]
-        elif expense_type == "Office expenses and supplies":
-            # Display specific options for Office expenses and supplies
-            return ["Rent", "Utilities", "Other"]
-        else:
-            return []  # Handle other cases or return an empty list
-
-        data = [row[0] for row in cursor.fetchall()]
-        return data
-
-    except Exception as e:
-        print(f"Error fetching payment to data: {str(e)}")
-        return []
-
-    finally:
-        cursor.close()
-
-
-def add_X_to_accounts(connection, received_by):
-    cursor = connection.cursor()
-
-    try:
-        cursor.execute('INSERT INTO accounts (accounts_name) VALUES (%s)', received_by)
-        connection.commit()
-        return True
-
-    except Exception as e:
-        print(f"Error adding 'X' to accounts: {str(e)}")
-        connection.rollback()
-        return False
-
-    finally:
-        cursor.close()
-
-
-def get_ids(connection, income_type, payment_via, received_by):
-    global global_ids  # Use the global variable
-
-    cursor = connection.cursor()
-
-    try:
-        income_id, payment_by, payment_to = None, None, None
-
-        if global_ids['income_id'] is not None:
-            # If values are already fetched, use them
-            income_id = global_ids['income_id']
-            payment_by = global_ids['payment_by']
-            payment_to = global_ids['payment_to']
-        else:
-            # Fetch values only if not already fetched
-            cursor.execute('SELECT income_id FROM income_type WHERE income_title = %s', income_type)
-            result = cursor.fetchone()
-            if result:
-                income_id = result[0]
-
-            cursor.execute('SELECT account_id FROM accounts WHERE accounts_name = %s', payment_via)
-            result = cursor.fetchone()
-            if result:
-                payment_by = result[0]
-
-            cursor.execute('SELECT account_id FROM accounts WHERE accounts_name = %s', received_by)
-            result = cursor.fetchone()
-            if result:
-                payment_to = result[0]
-
-            # Update global variable with fetched values
-            global_ids = {'income_id': income_id, 'payment_by': payment_by, 'payment_to': payment_to}
-
-        print(f"After get_ids  line 96- Income ID: {income_id}, Payment By: {payment_by}, Payment To: {payment_to}")
-
-        return {'income_id': income_id, 'payment_by': payment_by, 'payment_to': payment_to}
-
-    except Exception as e:
-        print(f"Error fetching IDs: {str(e)}")
-        return {'income_id': None, 'payment_by': None, 'payment_to': None}
-
-    finally:
-        cursor.close()
-
-def get_expense_ids(connection, expense_type, payment_via, received_by):
-    global global_ids_expense
-
-    cursor = connection.cursor()
-
-    try:
-        expense_id, payment_by, payment_to = None, None, None
-
-        if global_ids_expense['expense_id'] is not None:
-            # If values are already fetched, use them
-            expense_id = global_ids_expense['expense_id']
-            payment_by = global_ids_expense['payment_by']
-            payment_to = global_ids_expense['payment_to']
-        else:
-            # Fetch values only if not already fetched
-            cursor.execute('SELECT expense_id FROM expense_type WHERE expense_title = %s', expense_type)
-            result = cursor.fetchone()
-            if result:
-                expense_id = result[0]
-
-            cursor.execute('SELECT account_id FROM accounts WHERE accounts_name = %s', payment_via)
-            result = cursor.fetchone()
-            if result:
-                payment_by = result[0]
-
-            cursor.execute('SELECT account_id FROM accounts WHERE accounts_name = %s', received_by)
-            result = cursor.fetchone()
-            if result:
-                payment_to = result[0]
-
-            # Update global variable with fetched values
-            global_ids_expense = {'expense_id': expense_id, 'payment_by': payment_by, 'payment_to': payment_to}
-
-        print(f"After get_expense_ids line 96 - Expense ID: {expense_id}, Payment By: {payment_by}, Payment To: {payment_to}")
-
-        return {'expense_id': expense_id, 'payment_by': payment_by, 'payment_to': payment_to}
-
-    except Exception as e:
-        print(f"Error fetching Expense IDs: {str(e)}")
-        return {'expense_id': None, 'payment_by': None, 'payment_to': None}
-
-    finally:
-        cursor.close()
-
-def check_source_exists(connection, source):
-    cursor = connection.cursor()
-
-    try:
-        cursor.execute(
-            '''
-            SELECT COUNT(*) AS source_exists
-            FROM accounts
-            WHERE accounts_name = %s 
-              AND accounts_name NOT IN ('Bank', 'Cash');
-            ''',
-            source
-        )
-
-        result = cursor.fetchone()
-        source_exists = result[0] if result else 0
-
-        return source_exists == 1
-
-    except Exception as e:
-        print(f"Error checking source: {str(e)}")
-        return False
-
-    finally:
-        cursor.close()
-def add_expense_transaction(connection, amount, expense_id, source, description, payment_by, payment_to):
-    cursor = connection.cursor()
-    global global_ids_expense
-
-    try:
-        submission_datetime = datetime.now()
-
-        # Check if the source is included in the accounts table and is not "Bank" or "Cash"
-        source_exists = check_source_exists(connection, source)
-
-        cursor.execute(
-            '''
-            INSERT INTO Transactions (amount, income_id, source, description, payment_by, payment_to, submission_datetime, type) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, -1)
-            ''',
-            (amount, expense_id, source, description, payment_by, payment_to, submission_datetime)
-        )
-
-        cursor.execute('UPDATE accounts SET accounts_balance = accounts_balance - %s WHERE account_id = %s',
-                       (amount, payment_by))
-
-        if expense_id ==5 or expense_id ==7:
-            cursor.execute('UPDATE accounts SET accounts_balance = accounts_balance + %s WHERE accounts_name = %s',
-                           (amount, source))
-
-
-        connection.commit()
-        global_ids_expense = {'expense_id': None, 'payment_by': None, 'payment_to': None}
-
-        return True
-
-    except Exception as e:
-        print(f"Error adding transaction: {str(e)}")
-        connection.rollback()
-        return False
-
-    finally:
-        cursor.close()
-
-
-@app.route('/get_source_data', methods=['POST'])
-def get_source_data():
-    connection = check_database_connection()
-
-    try:
-        if connection:
-            income_type = request.form.get('type')
-            data = fetch_source_data(connection, income_type)
-            return jsonify(data)
-        else:
-            return jsonify([])
-
-    except Exception as e:
-        print(f"Error fetching source data: {str(e)}")
-        return jsonify([])
-
-    finally:
-        if connection:
-            connection.close()
-
-@app.route('/get_payment_to_data', methods=['POST'])
-def get_payment_to_data():
-    connection = check_database_connection()
-
-    try:
-        if connection:
-            expense_type = request.form.get('type')  # Update variable name to expense_type
-            data = fetch_payment_to_data(connection, expense_type)
-            return jsonify(data)
-        else:
-            return jsonify([])
-
-    except Exception as e:
-        print(f"Error fetching payment to data: {str(e)}")
-        return jsonify([])
-
-    finally:
-        if connection:
-            connection.close()
-
-
-@app.route('/')
-def home():
-    print(f'DATABASE_URL: {database_url}')
-
-    return render_template("index.html", month=mon)
-
-
-
-
-@app.route('/add_income', methods=['GET', 'POST'])
-def add_income():
-    if request.method == 'GET':
-        connection = check_database_connection()
-        income_types = []
-
-        if connection:
-            income_types = get_income_types(connection)
-            connection.close()
-
-        return render_template("add_income.html", income_types=income_types)
-
-
-    elif request.method == 'POST':
-
-        amount = request.form.get('amount')
-
-        income_id = request.form.get('type')
-
-        source = request.form.get('source')
-
-        description = request.form.get('description', '')
-
-        payment_by = request.form.get('paymentVia')
-
-        received_by = request.form.get('receivedBy')
-
-        if not income_id or not payment_by or not received_by:
-            return "Error: Missing required parameters"
-
-        connection = check_database_connection()
-
-        try:
-
-            if connection:
-
-                print("In add income")
-
-                ids = get_ids(connection, income_id, payment_by, received_by)
-
-                print("after add income")
-
-                print(
-                    f"Before add_transaction line 190 - Income ID: {ids['income_id']}, Payment By: {ids['payment_by']}, Payment To: {ids['payment_to']}")
-
-                # Set the values obtained from get_ids
-
-                income_id = ids['income_id']
-
-                payment_by = ids['payment_by']
-
-                payment_to = ids['payment_to']
-
-                print(
-                    f"After get_ids in add_income 196 - Income ID: {income_id}, Payment By: {payment_by}, Payment To: {payment_to}")
-
-                success = add_transaction(connection, amount, income_id, source, description, payment_by, payment_to)
-
-                if success:
-
-                    return "Form submitted successfully"
-
-                else:
-
-                    return "Error submitting form"
-
-
-            else:
-
-                return "Error: No database connection"
-
-
-        except Exception as e:
-
-            print(f"Error in add_income: {str(e)}")
-
-            return "Error in add_income"
-
-
-        finally:
-
-            if connection:
-                connection.close()
-
-
-
-
-
-@app.route('/add_expense', methods=['GET', 'POST'])
-def add_expense():
-    if request.method == 'GET':
-        connection = check_database_connection()
-        expense_types = []
-
-        if connection:
-            expense_types = get_expense_types(connection)
-            connection.close()
-
-        return render_template("add_expense.html", expense_types=expense_types)
-
-    elif request.method == 'POST':
-        amount = request.form.get('amount')
-        expense_type = request.form.get('type')
-        source = request.form.get('source')
-        description = request.form.get('description', '')
-        payment_by = request.form.get('paymentVia')
-        received_by = request.form.get('receivedBy')
-
-        if not expense_type or not payment_by or not received_by:
-            return "Error: Missing required parameters"
-
-        connection = check_database_connection()
-
-        try:
-            if connection:
-                print("In add_expense")
-
-                ids = get_expense_ids(connection, expense_type, payment_by, received_by)
-
-                print("after add_expense")
-
-                print(
-                    f"Before add_expense_transaction line 190 - Expense ID: {ids['expense_id']}, Payment By: {ids['payment_by']}, Payment To: {ids['payment_to']}")
-
-                # Set the values obtained from get_expense_ids
-                expense_id = ids['expense_id']
-                payment_by = ids['payment_by']
-                payment_to = ids['payment_to']
-
-                print(
-                    f"After get_expense_ids in add_expense 196 - Expense ID: {expense_id}, Payment By: {payment_by}, Payment To: {payment_to}")
-
-                success = add_expense_transaction(connection, amount, expense_id, source, description, payment_by, payment_to)
-
-                if success:
-                    return "Form submitted successfully"
-                else:
-                    return "Error submitting form"
-            else:
-                return "Error: No database connection"
-
-        except Exception as e:
-            print(f"Error in add_expense: {str(e)}")
-            return "Error in add_expense"
-
-        finally:
-            if connection:
-                connection.close()
-
-
-
-
-@app.route('/get_ids', methods=['POST'])
-def get_ids_route():
-    connection = check_database_connection()
-
-    try:
-        if connection:
-            income_type = request.form.get('type')
-            payment_via = request.form.get('paymentVia')
-            received_by = request.form.get('receivedBy')
-
-            if not income_type:
-                income_type = "Sales"
-            if not payment_via:
-                payment_via = "Bank"
-            ids = get_ids(connection, income_type, payment_via, received_by)
-            print(jsonify(ids))
-            return jsonify(ids)
-        else:
-            return jsonify({})
-
-    except Exception as e:
-        print(f"Error fetching IDs: {str(e)}")
-        return jsonify({})
-
-    finally:
-        if connection:
-            connection.close()
-
-
-@app.route('/get_expense_ids', methods=['POST'])
-def get_expense_ids_route():
-    connection = check_database_connection()
-
-    try:
-        if connection:
-            income_type = request.form.get('type')
-            payment_via = request.form.get('paymentVia')
-            received_by = request.form.get('receivedBy')
-
-            if not income_type:
-                income_type = "Other"
-            if not payment_via:
-                payment_via = "Bank"
-            ids = get_expense_ids(connection, income_type, payment_via, received_by)
-            print(jsonify(ids))
-            return jsonify(ids)
-        else:
-            return jsonify({})
-
-    except Exception as e:
-        print(f"Error fetching IDs: {str(e)}")
-        return jsonify({})
-
-    finally:
-        if connection:
-            connection.close()
-
-
-
-
-
-
-
-
-
-
-
-##HOME
-
-
-@app.route('/get_income_this_month', methods=['GET'])
-def get_income_this_month():
-    connection = check_database_connection()
-
-    try:
-        if connection:
-            data = fetch_income_this_month(connection)
-            return jsonify(data)
-
-        return jsonify(0)  # Default value if no connection
-
-    except Exception as e:
-        print(f"Error fetching income this month data: {str(e)}")
-        return jsonify(0)  # Default value in case of an error
-
-    finally:
-        if connection:
-            connection.close()
-
-
-
-
-@app.route('/get_expenses_this_month', methods=['GET'])
-def get_expenses_this_month():
-    connection = check_database_connection()
-
-    try:
-        if connection:
-            data = fetch_expenses_this_month(connection)
-            return jsonify(data)
-
-        return jsonify(0)  # Default value if no connection
-
-    except Exception as e:
-        print(f"Error fetching expenses this month data: {str(e)}")
-        return jsonify(0)  # Default value in case of an error
-
-    finally:
-        if connection:
-            connection.close()
-
-
-def fetch_expenses_this_month(connection):
-    cursor = connection.cursor()
-    expenses = 0  # Initialize expenses
-
-    try:
-        current_month = datetime.now().month
-        current_year = datetime.now().year
-
-        cursor.execute("""
-            SELECT COALESCE(SUM(amount), 0)
-            FROM transactions 
-            WHERE type = -1
-            AND MONTH(submission_datetime) = %s
-            AND YEAR(submission_datetime) = %s
-        """, (current_month, current_year))
-
-        data = cursor.fetchone()
-        expenses = data[0] if data and data[0] is not None else 0
-        print(f"The expenses: {expenses}")
-        return expenses
-
-    except Exception as e:
-        print(f"Error fetching expenses this month data: {str(e)}")
-        return expenses
-
-    finally:
-        cursor.close()
-
-def fetch_income_this_month(connection):
-    cursor = connection.cursor()
-    income = 0  # Initialize income
-
-    try:
-        current_month = datetime.now().month
-        current_year = datetime.now().year
-
-        cursor.execute("""
-            SELECT COALESCE(SUM(amount), 0) AS income
-            FROM transactions 
-            WHERE type = 1
-            AND MONTH(submission_datetime) = %s
-            AND YEAR(submission_datetime) = %s
-        """, (current_month, current_year))
-
-        data = cursor.fetchone()
-        income = data[0] if data and data[0] is not None else 0
-        print(f"The income: {income}")
-        return income
-
-    except Exception as e:
-        print(f"Error fetching income this month data: {str(e)}")
-        return income
-
-    finally:
-        cursor.close()
-
-@app.route('/get_net_profit_this_month', methods=['GET'])
-def get_net_profit_this_month():
-    connection = check_database_connection()
-
-    try:
-        if connection:
-            net_profit = fetch_net_profit_this_month(connection)
-            return jsonify(net_profit)
-
-        return jsonify(0)  # Default value if no connection
-
-    except Exception as e:
-        print(f"Error fetching net profit this month data: {str(e)}")
-        return jsonify(0)  # Default value in case of an error
-
-    finally:
-        if connection:
-            connection.close()
-
-
-def fetch_net_profit_this_month(connection):
-    cursor = connection.cursor()
-    net_profit = 0
-
-    try:
-        current_month = datetime.now().month
-        current_year = datetime.now().year
-
-        cursor.execute("""
-            SELECT SUM(amount * type)
-            FROM transactions
-            WHERE MONTH(submission_datetime) = %s
-            AND YEAR(submission_datetime) = %s
-            AND income_id != 7
-        """, (current_month, current_year))
-
-        data = cursor.fetchone()
-        net_profit = data[0] if data and data[0] is not None else 0
-        net_profit = round(net_profit, 1)
-        print(f"The net profit: {net_profit}")
-        return net_profit
-
-    except Exception as e:
-        print(f"Error fetching net profit this month data: {str(e)}")
-        return net_profit
-
-    finally:
-        cursor.close()
-
-
-@app.route('/get_cash_on_hand', methods=['GET'])
-def get_cash_on_hand():
-    connection = check_database_connection()
-
-    try:
-        if connection:
-            data = fetch_cash_on_hand(connection)
-            return jsonify(data)
-
-        return jsonify(0)  # Default value if no connection
-
-    except Exception as e:
-        print(f"Error fetching cash on hand data: {str(e)}")
-        return jsonify(0)  # Default value in case of an error
-
-    finally:
-        if connection:
-            connection.close()
-
-
-def fetch_cash_on_hand(connection):
-    cursor = connection.cursor()
-
-    try:
-        cursor.execute("SELECT COALESCE(SUM(accounts_balance), 0) "
-                       "FROM accounts WHERE accounts_name IN ('Cash', 'Bank')")
-        data = cursor.fetchone()
-        cash_on_hand = data[0] if data and data[0] is not None else 0
-        cash_on_hand_rounded = round(cash_on_hand, 1)  # Round to one decimal place
-        return cash_on_hand_rounded
-
-    except Exception as e:
-        print(f"Error fetching cash on hand data: {str(e)}")
-        return 0
-
-    finally:
-        cursor.close()
-
-
-##HOME
-
-##EXPENSES_LIST
-
-@app.route('/expenses_list')
-def expenses_list():
-    connection = check_database_connection()
-
-    try:
-        if connection:
-            # Fetch expenses data from your database
-            expenses_data = fetch_expenses_data(connection)
-            return render_template('expenses_list.html', expenses_data=expenses_data)
-        else:
-            return "Error: No database connection"
-
-    except Exception as e:
-        print(f"Error in expenses_list route: {str(e)}")
-        return "Error in expenses_list route"
-
-    finally:
-        if connection:
-            connection.close()
-
-# Function to fetch expenses data from the database
-
-def fetch_expenses_data(connection):
-    cursor = connection.cursor()
-
-    try:
-        cursor.execute('SELECT income_id, source, payment_by, payment_to, submission_datetime, amount, type FROM Transactions')
-        expenses_data = cursor.fetchall()
-
-        formatted_expenses = []
-
-        for row in expenses_data:
-            if row[6] == -1:
-                # Fetch expense category from expense_type table using income_id
-                print(row[0])
-                cursor.execute('SELECT expense_title FROM expense_type WHERE expense_id = %s', (row[0],))
-                data = cursor.fetchone()
-                category = data[0] if data and data[0] is not None else None
-                print(category)
-
-                # Fetch payment method from accounts table using payment_by
-                cursor.execute('SELECT accounts_name FROM accounts WHERE account_id = %s', (row[2],))
-                data = cursor.fetchone()
-                payment_method = data[0] if data and data[0] is not None else None
-
-                # Fetch payment by from accounts table using payment_to
-                cursor.execute('SELECT accounts_name FROM accounts WHERE account_id = %s', (row[3],))
-                data = cursor.fetchone()
-                payment_by = data[0] if data and data[0] is not None else None
-
-                formatted_expense = {
-                    'expense_category': category,
-                    'sub_category': row[1],  # Assuming source represents sub-category
-                    'amount': row[5],
-                    'payment_method': payment_method,
-                    'payment_by': payment_by,
-                    'submission_datetime': row[4]
-                }
-
-                formatted_expenses.append(formatted_expense)
-
-        return formatted_expenses
-
-    except Exception as e:
-        print(f"Error fetching expenses data: {str(e)}")
-        return []
-
-    finally:
-        cursor.close()
-def get_filtered_expenses_data(connection, from_date, to_date):
-    cursor = connection.cursor()
-
-    try:
-        # Convert input date strings to datetime objects with a specific format
-        from_date = datetime.strptime(from_date, "%Y-%m-%d").strftime("%Y-%m-%d 00:00:00")
-        to_date = datetime.strptime(to_date, "%Y-%m-%d").strftime("%Y-%m-%d 23:59:59")
-
-        # Execute the SQL query
-        query = 'SELECT income_id, source, payment_by, payment_to, submission_datetime, amount, type ' \
-                'FROM Transactions ' \
-                'WHERE submission_datetime BETWEEN %s AND %s AND type = -1'
-        cursor.execute(query, (from_date, to_date))
-        expenses_data = cursor.fetchall()
-
-        # Format the expenses data
-        formatted_expenses = []
-
-        for row in expenses_data:
-            if row[6] == -1:
-                # Fetch expense category from expense_type table using income_id
-                cursor.execute('SELECT expense_title FROM expense_type WHERE expense_id = %s', (row[0],))
-                data = cursor.fetchone()
-                category = data[0] if data and data[0] is not None else None
-
-                # Fetch payment method from accounts table using payment_by
-                cursor.execute('SELECT accounts_name FROM accounts WHERE account_id = %s', (row[2],))
-                data = cursor.fetchone()
-                payment_method = data[0] if data and data[0] is not None else None
-
-                # Fetch payment by from accounts table using payment_to
-                cursor.execute('SELECT accounts_name FROM accounts WHERE account_id = %s', (row[3],))
-                data = cursor.fetchone()
-                payment_by = data[0] if data and data[0] is not None else None
-
-                formatted_expense = {
-                    'expense_category': category,
-                    'sub_category': row[1],  # Assuming source represents sub-category
-                    'amount': row[5],
-                    'payment_method': payment_method,
-                    'payment_by': payment_by,
-                    'submission_datetime': row[4]
-                }
-
-                formatted_expenses.append(formatted_expense)
-
-        return formatted_expenses
-
-    except Exception as e:
-        print(f"Error fetching filtered expenses data: {str(e)}")
-        return []
-
-    finally:
-        cursor.close()
-
-@app.route('/get_filtered_expenses', methods=['POST'])
-def get_filtered_expenses():
-    connection = check_database_connection()
-
-    try:
-        if connection:
-            from_date = request.form.get('fromDate')
-            to_date = request.form.get('toDate')
-
-            print(f"Received filter parameters - From: {from_date}, To: {to_date}")
-
-            expenses_data = get_filtered_expenses_data(connection, from_date, to_date)
-
-            print(f"Filtered expenses data: {expenses_data}")
-
-            return jsonify({'expenses_data': expenses_data})
-
-        else:
-            return jsonify({})  # Return an empty dictionary if there's no database connection
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        print(f"Error fetching filtered expenses data: {str(e)}")
-        return jsonify({})  # Return an empty dictionary in case of an error
-
-    finally:
-        if connection:
-            connection.close()
-
-
-
-
-#income_list.html
-@app.route('/income_list')
-def income_list():
-    connection = check_database_connection()
-
-    try:
-        if connection:
-            # Fetch income data from your database
-            income_data = fetch_income_data(connection)
-            return render_template('income_list.html', income_data=income_data)
-        else:
-            return "Error: No database connection"
-
-    except Exception as e:
-        print(f"Error in income_list route: {str(e)}")
-        return "Error in income_list route"
-
-    finally:
-        if connection:
-            connection.close()
-
-# Function to fetch income data from the database
-
-def fetch_income_data(connection):
-    cursor = connection.cursor()
-
-    try:
-        cursor.execute('SELECT income_id, source, payment_by, payment_to, submission_datetime, amount, type FROM Transactions')
-        income_data = cursor.fetchall()
-
-        formatted_income = []
-
-        for row in income_data:
-            if row[6] == 1:
-                # Fetch income category from income_type table using income_id
-                cursor.execute('SELECT income_title FROM income_type WHERE income_id = %s', (row[0],))
-                data = cursor.fetchone()
-                category = data[0] if data and data[0] is not None else None
-
-                # Fetch payment method from accounts table using payment_by
-                cursor.execute('SELECT accounts_name FROM accounts WHERE account_id = %s', (row[2],))
-                data = cursor.fetchone()
-                payment_method = data[0] if data and data[0] is not None else None
-
-                # Fetch received by from accounts table using payment_to
-                cursor.execute('SELECT accounts_name FROM accounts WHERE account_id = %s', (row[3],))
-                data = cursor.fetchone()
-                received_by = data[0] if data and data[0] is not None else None
-
-                formatted_income_item = {
-                    'income_category': category,
-                    'sub_category': row[1],  # Assuming source represents sub-category
-                    'amount': row[5],
-                    'payment_method': payment_method,
-                    'received_by': received_by,
-                    'submission_datetime': row[4]
-                }
-
-                formatted_income.append(formatted_income_item)
-
-        return formatted_income
-
-    except Exception as e:
-        print(f"Error fetching income data: {str(e)}")
-        return []
-
-    finally:
-        cursor.close()
-
-def get_filtered_income_data(connection, from_date, to_date):
-    cursor = connection.cursor()
-
-    try:
-        # Convert input date strings to datetime objects with a specific format
-        from_date = datetime.strptime(from_date, "%Y-%m-%d").strftime("%Y-%m-%d 00:00:00")
-        to_date = datetime.strptime(to_date, "%Y-%m-%d").strftime("%Y-%m-%d 23:59:59")
-
-        # Execute the SQL query
-        query = 'SELECT income_id, source, payment_by, payment_to, submission_datetime, amount, type ' \
-                'FROM Transactions ' \
-                'WHERE submission_datetime BETWEEN %s AND %s AND type = 1'
-        cursor.execute(query, (from_date, to_date))
-        income_data = cursor.fetchall()
-
-        # Format the income data
-        formatted_income = []
-
-        for row in income_data:
-            if row[6] == 1:
-                # Fetch income category from income_type table using income_id
-                cursor.execute('SELECT income_title FROM income_type WHERE income_id = %s', (row[0],))
-                data = cursor.fetchone()
-                category = data[0] if data and data[0] is not None else None
-
-                # Fetch payment method from accounts table using payment_by
-                cursor.execute('SELECT accounts_name FROM accounts WHERE account_id = %s', (row[2],))
-                data = cursor.fetchone()
-                payment_method = data[0] if data and data[0] is not None else None
-
-                # Fetch received by from accounts table using payment_to
-                cursor.execute('SELECT accounts_name FROM accounts WHERE account_id = %s', (row[3],))
-                data = cursor.fetchone()
-                received_by = data[0] if data and data[0] is not None else None
-
-                formatted_income_item = {
-                    'income_category': category,
-                    'sub_category': row[1],  # Assuming source represents sub-category
-                    'amount': row[5],
-                    'payment_method': payment_method,
-                    'received_by': received_by,
-                    'submission_datetime': row[4]
-                }
-
-                formatted_income.append(formatted_income_item)
-
-        return formatted_income
-
-    except Exception as e:
-        print(f"Error fetching filtered income data: {str(e)}")
-        return []
-
-    finally:
-        cursor.close()
-
-@app.route('/get_filtered_income', methods=['POST'])
-def get_filtered_income():
-    connection = check_database_connection()
-
-    try:
-        if connection:
-            from_date = request.form.get('fromDate')
-            to_date = request.form.get('toDate')
-
-            print(f"Received filter parameters - From: {from_date}, To: {to_date}")
-
-            income_data = get_filtered_income_data(connection, from_date, to_date)
-
-            print(f"Filtered income data: {income_data}")
-
-            return jsonify({'income_data': income_data})
-
-        else:
-            return jsonify({})  # Return an empty dictionary if there's no database connection
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        print(f"Error fetching filtered income data: {str(e)}")
-        return jsonify({})  # Return an empty dictionary in case of an error
-
-    finally:
-        if connection:
-            connection.close()
-
-#income_list.html
-
-#Account_Balance.html
-# Your route to render the account balances page
-@app.route('/account_balance')
-def account_balances():
-    connection = check_database_connection()
-
-    try:
-        if connection:
-            # Fetch account data from your database
-            accounts = fetch_accounts_data(connection)
-            return render_template('account_balance.html', accounts=accounts)
-        else:
-            return "Error: No database connection"
-
-    except Exception as e:
-        print(f"Error in account_balances route: {str(e)}")
-        return "Error in account_balances route"
-
-    finally:
-        if connection:
-            connection.close()
-
-# Function to fetch accounts data from the database
-def fetch_accounts_data(connection):
-    cursor = connection.cursor()
-
-    try:
-        cursor.execute('SELECT accounts_name, accounts_balance FROM accounts')  # Adjust the query accordingly
-        accounts_data = cursor.fetchall()
-
-        formatted_accounts = []
-
-        for row in accounts_data:
-            formatted_account = {
-                'person_name': row[0],
-                'balance': row[1],
-                'color': generate_random_color()  # Generate a random color for each account
-            }
-
-            formatted_accounts.append(formatted_account)
-
-        return formatted_accounts
-
-    except Exception as e:
-        print(f"Error fetching accounts data: {str(e)}")
-        return []
-
-    finally:
-        cursor.close()
-
-# Function to generate a random hex color
-def generate_random_color():
-    color = "#{:06x}".format(random.randint(0, 0xFFFFFF))
-    return color
-
-
-
-#account_balance.html
-
-
-
-#Accounts.html
-
-
-@app.route('/accounts')
-def accounts():
-    return render_template("accounts.html")
-
-#accounts.html
-
-#logout
-
-@app.route('/logout')
-def logout():
-    # Clear the session data
-    session.clear()
-    # Redirect to the login page
-    return redirect(url_for('login'))
-
-#logout
-
-@app.route('/get_expenses_and_incomes', methods=['GET'])
-def get_expenses_and_incomes():
-    connection = check_database_connection()
-
-    try:
-        if connection:
-            expense_data = fetch_expenses(connection)
-            income_data = fetch_incomes(connection)
-            return jsonify({"expense_data": expense_data, "income_data": income_data})
-
-        return jsonify(0)  # Default value if no connection
-
-    except Exception as e:
-        print(f"Error fetching expenses and incomes data: {str(e)}")
-        return jsonify(0)  # Default value in case of an error
-
-    finally:
-        if connection:
-            connection.close()
-
-def fetch_expenses(connection):
-    cursor = connection.cursor()
-    current_month = datetime.now().month
-    current_year = datetime.now().year
-    try:
-        cursor.execute("""
-                    SELECT Income_Expense_Name, SUM(CAST(Amount AS FLOAT)) AS Amount
-                    FROM TransactionDetails 
-                    WHERE Amount < 0 AND MONTH(Payment_Date) = %s
-                    AND YEAR(Payment_Date) = %s
-                    GROUP BY Income_Expense_Name
-                    ORDER BY Amount ASC
-                """,(current_month, current_year))
-
-        expense_data = cursor.fetchall()
-        return expense_data
-
-
-
-
-    except Exception as e:
-        print(f"Error fetching expenses data: {str(e)}")
-        return []
-
-    finally:
-        cursor.close()
-
-
-def fetch_incomes(connection):
-    cursor = connection.cursor()
-    current_month = datetime.now().month
-    current_year = datetime.now().year
-    try:
-        cursor.execute("""
-                    SELECT Income_Expense_Name, SUM(CAST(Amount AS FLOAT)) AS Amount
-                    FROM TransactionDetails 
-                    WHERE Amount > 0 AND MONTH(Payment_Date) = %s
-                    AND YEAR(Payment_Date) = %s
-                    GROUP BY Income_Expense_Name
-                    ORDER BY Amount ASC
-                """,(current_month, current_year))
-
-        income_data = cursor.fetchall()
-        return income_data
-
-    except Exception as e:
-        print(f"Error fetching incomes data: {str(e)}")
-        return []
-
-    finally:
-        cursor.close()
-
-
-if __name__ == '__main__':
-    app.run(debug=True)
