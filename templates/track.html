@@ -1,4 +1,7 @@
-<html lang="en"><head>
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
 
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -6,17 +9,30 @@
     <meta name="description" content="">
     <meta name="author" content="">
 
-    <title>Daily Tasker</title>
+    <title>Daily Tasker - Tracking</title>
 
-    <!-- Custom fonts for this template-->
+    <!-- Custom fonts for this template -->
     <link href="static/assets/vendor/fontawesome-free/css/all.min.css" rel="stylesheet" type="text/css">
-    <link href="https://fonts.googleapis.com/css?family=Nunito:200,200i,300,300i,400,400i,600,600i,700,700i,800,800i,900,900i" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css?family=Nunito:200,200i,300,300i,400,400i,600,600i,700,700i,800,800i,900,900i"
+        rel="stylesheet">
 
-    <!-- Custom styles for this template-->
+    <!-- Custom styles for this template -->
     <link href="static/assets/css/sb-admin-2.min.css" rel="stylesheet">
 
-<style type="text/css">/* Chart.js */
-@keyframes chartjs-render-animation{from{opacity:.99}to{opacity:1}}.chartjs-render-monitor{animation:chartjs-render-animation 1ms}.chartjs-size-monitor,.chartjs-size-monitor-expand,.chartjs-size-monitor-shrink{position:absolute;direction:ltr;left:0;top:0;right:0;bottom:0;overflow:hidden;pointer-events:none;visibility:hidden;z-index:-1}.chartjs-size-monitor-expand>div{position:absolute;width:1000000px;height:1000000px;left:0;top:0}.chartjs-size-monitor-shrink>div{position:absolute;width:200%;height:200%;left:0;top:0}</style></head>
+    <!-- Custom styles for this page -->
+    <link href="static/assets/vendor/datatables/dataTables.bootstrap4.min.css" rel="stylesheet">
+ <style>
+        .status-buttons {
+            display: none;
+            margin-top: 10px;
+        }
+        .status-buttons .btn {
+            margin-right: 5px;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
 
 <body id="page-top">
 
@@ -24,74 +40,7 @@
     <div id="wrapper">
 
         <!-- Sidebar -->
-        <ul class="navbar-nav bg-gradient-primary sidebar sidebar-dark accordion" id="accordionSidebar">
-
-            <!-- Sidebar - Brand -->
-            <a class="sidebar-brand d-flex align-items-center justify-content-center" href="/">
-                <div class="sidebar-brand-icon rotate-n-15">
-                    <i class="fas fa-laugh-wink"></i>
-                </div>
-                <div class="sidebar-brand-text mx-3">Daily Tasker<sup>2</sup></div>
-            </a>
-
-            <!-- Divider -->
-            <hr class="sidebar-divider my-0">
-
-            <!-- Nav Item - Dashboard -->
-            <li class="nav-item active">
-                <a class="nav-link" href="/">
-                    <i class="fas fa-fw fa-tachometer-alt"></i>
-                    <span>Dashboard</span></a>
-            </li>
-
-            <!-- Divider -->
-
-
-            <!-- Heading -->
-
-
-
-
-
-            <!-- Nav Item - Utilities Collapse Menu -->
-
-
-            <!-- Divider -->
-
-
-            <!-- Heading -->
-
-
-            <!-- Nav Item - Pages Collapse Menu -->
-
-
-            <!-- Nav Item - Charts -->
-            <li class="nav-item">
-                <a class="nav-link" href="#">
-                    <i class="fas fa-fw fa-chart-area"></i>
-                    <span>Report</span></a>
-            </li>
-
-            <!-- Nav Item - Tables -->
-            <li class="nav-item active">
-                <a class="nav-link" href="track">
-                    <i class="fas fa-fw fa-table"></i>
-                    <span>Tracking</span></a>
-            </li>
-
-
-            <!-- Divider -->
-            <hr class="sidebar-divider d-none d-md-block">
-
-            <!-- Sidebar Toggler (Sidebar) -->
-            <div class="text-center d-none d-md-inline">
-                <button class="rounded-circle border-0" id="sidebarToggle"></button>
-            </div>
-
-            <!-- Sidebar Message -->
-
-
-        </ul>
+        {% include 'header.html' %}
         <!-- End of Sidebar -->
 
         <!-- Content Wrapper -->
@@ -104,9 +53,11 @@
                 <nav class="navbar navbar-expand navbar-light bg-white topbar mb-4 static-top shadow">
 
                     <!-- Sidebar Toggle (Topbar) -->
-                    <button id="sidebarToggleTop" class="btn btn-link d-md-none rounded-circle mr-3">
-                        <i class="fa fa-bars"></i>
-                    </button>
+                    <form class="form-inline">
+                        <button id="sidebarToggleTop" class="btn btn-link d-md-none rounded-circle mr-3">
+                            <i class="fa fa-bars"></i>
+                        </button>
+                    </form>
 
                     <!-- Topbar Search -->
 
@@ -128,6 +79,7 @@
                                             <button class="btn btn-primary" type="button">
                                                 <i class="fas fa-search fa-sm"></i>
                                             </button>
+
                                         </div>
                                     </div>
                                 </form>
@@ -136,13 +88,15 @@
 
                         <!-- Nav Item - Alerts -->
 <!--                        <li class="nav-item dropdown no-arrow mx-1">-->
-<!--                            <a class="nav-link dropdown-toggle" href="#" id="alertsDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">-->
+<!--                            <a class="nav-link dropdown-toggle" href="#" id="alertsDropdown" role="button"-->
+<!--                                data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">-->
 <!--                                <i class="fas fa-bell fa-fw"></i>-->
 <!--                                &lt;!&ndash; Counter - Alerts &ndash;&gt;-->
 <!--                                <span class="badge badge-danger badge-counter">3+</span>-->
 <!--                            </a>-->
 <!--                            &lt;!&ndash; Dropdown - Alerts &ndash;&gt;-->
-<!--                            <div class="dropdown-list dropdown-menu dropdown-menu-right shadow animated&#45;&#45;grow-in" aria-labelledby="alertsDropdown">-->
+<!--                            <div class="dropdown-list dropdown-menu dropdown-menu-right shadow animated&#45;&#45;grow-in"-->
+<!--                                aria-labelledby="alertsDropdown">-->
 <!--                                <h6 class="dropdown-header">-->
 <!--                                    Alerts Center-->
 <!--                                </h6>-->
@@ -185,19 +139,22 @@
 
 <!--                        &lt;!&ndash; Nav Item - Messages &ndash;&gt;-->
 <!--                        <li class="nav-item dropdown no-arrow mx-1">-->
-<!--                            <a class="nav-link dropdown-toggle" href="#" id="messagesDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">-->
+<!--                            <a class="nav-link dropdown-toggle" href="#" id="messagesDropdown" role="button"-->
+<!--                                data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">-->
 <!--                                <i class="fas fa-envelope fa-fw"></i>-->
 <!--                                &lt;!&ndash; Counter - Messages &ndash;&gt;-->
 <!--                                <span class="badge badge-danger badge-counter">7</span>-->
 <!--                            </a>-->
 <!--                            &lt;!&ndash; Dropdown - Messages &ndash;&gt;-->
-<!--                            <div class="dropdown-list dropdown-menu dropdown-menu-right shadow animated&#45;&#45;grow-in" aria-labelledby="messagesDropdown">-->
+<!--                            <div class="dropdown-list dropdown-menu dropdown-menu-right shadow animated&#45;&#45;grow-in"-->
+<!--                                aria-labelledby="messagesDropdown">-->
 <!--                                <h6 class="dropdown-header">-->
 <!--                                    Message Center-->
 <!--                                </h6>-->
 <!--                                <a class="dropdown-item d-flex align-items-center" href="#">-->
 <!--                                    <div class="dropdown-list-image mr-3">-->
-<!--                                        <img class="rounded-circle" src="static/img/undraw_profile_1.svg" alt="...">-->
+<!--                                        <img class="rounded-circle" src="img/undraw_profile_1.svg"-->
+<!--                                            alt="...">-->
 <!--                                        <div class="status-indicator bg-success"></div>-->
 <!--                                    </div>-->
 <!--                                    <div class="font-weight-bold">-->
@@ -208,7 +165,8 @@
 <!--                                </a>-->
 <!--                                <a class="dropdown-item d-flex align-items-center" href="#">-->
 <!--                                    <div class="dropdown-list-image mr-3">-->
-<!--                                        <img class="rounded-circle" src="static/img/undraw_profile_2.svg" alt="...">-->
+<!--                                        <img class="rounded-circle" src="img/undraw_profile_2.svg"-->
+<!--                                            alt="...">-->
 <!--                                        <div class="status-indicator"></div>-->
 <!--                                    </div>-->
 <!--                                    <div>-->
@@ -219,7 +177,8 @@
 <!--                                </a>-->
 <!--                                <a class="dropdown-item d-flex align-items-center" href="#">-->
 <!--                                    <div class="dropdown-list-image mr-3">-->
-<!--                                        <img class="rounded-circle" src="static/img/undraw_profile_3.svg" alt="...">-->
+<!--                                        <img class="rounded-circle" src="img/undraw_profile_3.svg"-->
+<!--                                            alt="...">-->
 <!--                                        <div class="status-indicator bg-warning"></div>-->
 <!--                                    </div>-->
 <!--                                    <div>-->
@@ -230,7 +189,8 @@
 <!--                                </a>-->
 <!--                                <a class="dropdown-item d-flex align-items-center" href="#">-->
 <!--                                    <div class="dropdown-list-image mr-3">-->
-<!--                                        <img class="rounded-circle" src="https://source.unsplash.com/Mv9hjnEUHR4/60x60" alt="...">-->
+<!--                                        <img class="rounded-circle" src="https://source.unsplash.com/Mv9hjnEUHR4/60x60"-->
+<!--                                            alt="...">-->
 <!--                                        <div class="status-indicator bg-success"></div>-->
 <!--                                    </div>-->
 <!--                                    <div>-->
@@ -243,7 +203,7 @@
 <!--                            </div>-->
 <!--                        </li>-->
 
-                        <div class="topbar-divider d-none d-sm-block"></div>
+                         <div class="topbar-divider d-none d-sm-block"></div>
 
                         <!-- Nav Item - User Information -->
                         <li class="nav-item dropdown no-arrow">
@@ -281,136 +241,149 @@
                 <!-- Begin Page Content -->
                 <div class="container-fluid">
 
+
                     <!-- Page Heading -->
-                    <div class="d-sm-flex align-items-center justify-content-between mb-4">
-                        <h1 class="h3 mb-0 text-gray-800">Dashboard</h1>
+                    <h1 class="h3 mb-2 text-gray-800">Order Tracking</h1>
 
-                    </div>
-
-                    <!-- Content Row -->
-                    <div class="row">
-    <!-- Timer Card -->
-
-
-    <div id="timer"  class="col-xl-4 col-md-6 mb-4">
-        <div class="card border-left-primary shadow h-100 py-2">
-            <div class="card-body">
-                <div class="row no-gutters align-items-center">
-                    <div class="col mr-2">
-                        <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
-                            Timer
+                    <!-- DataTales Example -->
+                    <div class="card shadow mb-4">
+                        <div class="card-header py-3">
+                            <h6 class="m-0 font-weight-bold text-primary">Shopify - Pending </h6>
                         </div>
-                        <div  class="h5 mb-0 font-weight-bold text-gray-800"> <span id="elapsed-time">00:00:00</span></div>
-                        <p class="text-gray-800">Today's Total Time</p>
-                    </div>
-                    <div class="col-auto">
-                        <i class="fas fa-stopwatch fa-2x text-gray-300"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
 
-    <!-- Generated Salary Card -->
-    <div class="col-xl-4 col-md-6 mb-4">
-        <div class="card border-left-success shadow h-100 py-2">
-            <div class="card-body">
-                <div class="row no-gutters align-items-center">
-                    <div class="col mr-2">
-                        <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
-                            Generated Salary</div>
-                        <div class="h5 mb-0 font-weight-bold text-gray-800">Rs 0.00</div>
-                        <p class="text-gray-800">This Month</p>
-                    </div>
-                    <div class="col-auto">
-                        <i class="fas fa-money-bill-wave fa-2x text-gray-300"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+                                <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
 
-    <!-- Bonus Card -->
-    <div class="col-xl-4 col-md-6 mb-4">
-        <div class="card border-left-warning shadow h-100 py-2">
-    <div class="card-body">
-        <div class="row no-gutters align-items-center">
-            <div class="col mr-2">
-                <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
-                    Bonus</div>
-                <p class="text-gray-800">
-                    <i class="fas fa-lock"></i> Unlocks at Level 2
-                </p>
-                <p class="text-gray-800"> </p>
+    <thead>
+        <tr>
+            <th>Order ID</th>
+            <th style="width: 15%;">Customer</th>
+            <th>City</th>
+            <th>Tags</th>
+            <th>Payment</th>
+            <th>Date</th>
+            <th>Total Price</th>
+            <th>Items</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tfoot>
+        <tr>
+            <th>Order ID</th>
+            <th style="width: 15%;">Customer</th>
+            <th>City</th>
+            <th>Tags</th>
+            <th>Payment</th>
+            <th>Date</th>
+            <th>Total Price</th>
+            <th>Items</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </tfoot>
+    <tbody>
+        {% for order in order_details %}
+            <tr>
+                <td>{{ order.order_id }}</td>
+                <td>
+                    {{ order.customer_details.name }}<br>
+                    {{ order.customer_details.address }}<br>
+                    {{ order.customer_details.city }}<br>
+                    {{ order.customer_details.phone }}<br>
+                    <a href="tel:{{ order.customer_details.phone }}" class="btn btn-primary btn-sm">Call</a>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-success btn-sm dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                            WhatsApp
+                        </button>
+                        <div class="dropdown-menu">
+                            <a class="dropdown-item" href="https://wa.me/{{ order.customer_details.phone }}?text=Hello%20{{ order.customer_details.name }},%20Your%20order%23{{ order.order_id }}%20from%20TickBags.com%20has%20been%20dispatched%20and%20is%20expected%20to%20be%20delivered%20in%203-7%20working%20days.%20Your%20patience%20is%20highly%20appreciated." target="_blank">Send Dispatch Message</a>
+                            <a class="dropdown-item" href="https://wa.me/{{ order.customer_details.phone }}?text=Hello%20{{ order.customer_details.name }},%20Your%20order%23{{ order.order_id }}%20from%20TickBags.com%20has%20been%20delayed,%20please%20be%20assured%20that%20we%20are%20trying%20our%20best%20to%20deliver%20it%20at%20earliest.%20Your%20patience%20is%20highly%20appreciated." target="_blank">Send Delay Message</a>
+                            <a class="dropdown-item" href="https://wa.me/{{ order.customer_details.phone }}?text=Hello%20{{ order.customer_details.name }},%20Logistics%20company%20made%20an%20attempt%20to%20deliver%20your%20order%23{{ order.order_id }}%20from%20TickBags.com%20but%20as%20per%20them,%20you%20weren't%20available%20at%20address%20or%20the%20address%20was%20closed.%20Please%20let%20us%20know%20when%20should%20we%20re-arrange%20the%20delivery.%20Thank%20You" target="_blank">Send Address Closed Message</a>
+                            <a class="dropdown-item" href="https://wa.me/{{ order.customer_details.phone }}?text=Hello%20{{ order.customer_details.name }},%20Logistics%20company%20made%20an%20attempt%20to%20deliver%20your%20order%23{{ order.order_id }}%20from%20TickBags.com%20and%20according%20to%20them,%20you%20refused%20to%20accept%20the%20delivery.%20Please%20let%20us%20know%20if%20you're%20still%20interested%20in%20receiving%20the%20product." target="_blank">Send Refused Message</a>
+                            <a class="dropdown-item" href="https://wa.me/{{ order.customer_details.phone }}?text=Hello%20{{ order.customer_details.name }},%20Your%20order%23{{ order.order_id }}%20from%20TickBags.com%20was%20delivered%20recently.%20Please%20let%20us%20know%20about%20your%20experience%20with%20us.%20Your%20feedback%20will%20surely%20help%20us%20improve.%20Thank%20You!" target="_blank">Send Feedback Message</a>
+                        </div>
+                    </div>
+                </td>
+                <td>{{ order.customer_details.city }}</td>
 
-            </div>
-            <div class="col-auto">
-                <i class="fas fa-gift fa-2x text-gray-300"></i>
-            </div>
-        </div>
+                <td>{% for tag in order.tags %}
+                     <span class="badge badge-secondary">{{ tag }}</span><br>
+                {% endfor %}</td>
+                <td>{{ order.financial_status }}</td>
+                <td>{{ order.created_at }}</td>
+                <td>{{ order.total_price }}</td>
+                <td>
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Image</th>
+                                <th style="width: 30%;">Title</th>
+                                <th>Pcs</th>
+                                <th>Tracking Number</th>
+                                <th style="width: 20%;">Status</th>
+                                <th>Email</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in order.line_items %}
+                                <tr>
+                                    <td><img src="{{ item.image_src }}" width="50" height="50"></td>
+                                    <td>{{ item.product_title }}</td>
+                                    <td>{{ item.quantity }}</td>
+                                    <td><a href=track/{{item.tracking_number}} target=”_blank”> {{ item.tracking_number }} </a> </td>
+                                    <td>{{ item.status }}</td>
+
+                                    <td>
+                                       <div class="btn-group">
+    <button type="button" class="btn btn-info btn-sm dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+        Email
+    </button>
+    <div class="dropdown-menu">
+        <a class="dropdown-item" href="#" onclick="sendEmail('delay', '{{ item.tracking_number }}')">Send Email for Delay</a>
+        <a class="dropdown-item" href="#" onclick="sendEmail('incomplete', '{{ item.tracking_number }}')">Send Email for Incomplete Address</a>
+        <a class="dropdown-item" href="#" onclick="sendEmail('refusal', '{{ item.tracking_number }}')">Send Email for Fake Refusal</a>
     </div>
 </div>
-    </div>
-</div>
-                    <div class="row">
-        <div class="col-lg-12 mb-12">
-            <!-- Illustrations -->
-            <div class="card shadow mb-4">
-                 <form action="/submit_tasks" method="post">
-            <div class="card">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="card-title mb-0">Task List</h5>
-                </div>
-                <ul class="list-group list-group-flush">
-                    {% set task_names = ["Confirm_Pending_Orders", "Track_Dispatched_Orders", "Contact_Abandoned_Orders", "Email_Courier",
-                    "Track_Daraz_Orders", "Solve_Customer_Complaints", "Call_Delivered_Orders", "Add_Reviews_to_Shopify",
-                    "Add_Reviews_to_Google_Maps", "Answer_Whatsapp_Messages_Calls", "Answer_Instagram_Facebook_Messages_Comments",
-                    "Answer_Daraz_Messages", "Answer_Phone_Calls"] %}
+                                    </td>
 
-                    {% for task in task_names %}
-                    <li class="list-group-item">
-                        <div class="custom-control custom-checkbox">
-                            <input type="checkbox" class="custom-control-input" id="{{ task }}" name="{{ task }}" value="1" {% if tasks and tasks[task] %}disabled{% endif %}>
-                            <label class="custom-control-label" for="{{ task }}">{{ task.replace('_', ' ') }}</label>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+
+                    </table>
+                </td>
+                 <td> {{ order.status}}</td>
+                 <td>
+                        <button class="btn btn-primary btn-sm" onclick="toggleStatusButtons(this)">Mark As</button>
+                        <div class="status-buttons">
+                             <button class="btn btn-outline-success btn-sm" onclick="applyTag('{{ order.id }}', 'Delivered')">Delivered</button>
+                            <button class="btn btn-outline-danger btn-sm" onclick="applyTag('{{ order.id }}', 'Returned')">Returned</button>
+                            <button class="btn btn-outline-warning btn-sm" onclick="applyTag('{{ order.id }}', 'Cancelled')">Cancelled</button>
+                            <button class="btn btn-outline-info btn-sm" onclick="applyTag('{{ order.id }}', 'Confirmed')">Confirmed</button>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="applyTag('{{ order.id }}', 'Call Not Attended')">Call Not Attended</button>
                         </div>
-                    </li>
-                    {% endfor %}
-                </ul>
-                <div class="card-footer">
-                    <button type="submit" class="btn btn-primary" {% if tasks %}disabled{% endif %}>Submit Tasks</button>
+                    </td>
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
+                <!-- /.container-fluid -->
+
             </div>
-        </form>
-            </div>
-            <!-- Approach -->
-        </div>
-    </div>
-                      <!-- Success Modal -->
-    <div class="modal fade" id="successModal" tabindex="-1" role="dialog" aria-labelledby="successModalLabel" aria-hidden="true">
-        <div class="modal-dialog" role="document">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="successModalLabel">Tasks Submitted</h5>
-                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                        <span aria-hidden="true">&times;</span>
-                    </button>
-                </div>
-                <div class="modal-body">
-                    <p>Your tasks have been successfully submitted.</p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
             <!-- End of Main Content -->
 
             <!-- Footer -->
             <footer class="sticky-footer bg-white">
                 <div class="container my-auto">
                     <div class="copyright text-center my-auto">
-                        <span>Copyright © Tick Bags Ltd</span>
+                        <span>Copyright &copy; Your Website 2020</span>
                     </div>
                 </div>
             </footer>
@@ -423,12 +396,13 @@
     <!-- End of Page Wrapper -->
 
     <!-- Scroll to Top Button-->
-    <a class="scroll-to-top rounded" href="#page-top" style="display: none;">
+    <a class="scroll-to-top rounded" href="#page-top">
         <i class="fas fa-angle-up"></i>
     </a>
 
     <!-- Logout Modal-->
-    <div class="modal fade" id="logoutModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
+    <div class="modal fade" id="logoutModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel"
+        aria-hidden="true">
         <div class="modal-dialog" role="document">
             <div class="modal-content">
                 <div class="modal-header">
@@ -445,42 +419,7 @@
             </div>
         </div>
     </div>
-     <!-- Modal Dialog -->
- <!-- Modal Dialog -->
-    <div class="modal fade" id="resumeModal" tabindex="-1" role="dialog" aria-labelledby="pauseModalLabel"
-         aria-hidden="true" data-backdrop="static" data-keyboard="false">
-        <div class="modal-dialog" role="document">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="pauseModalLabel">Timer Paused</h5>
-                </div>
-                <div class="modal-body">
-                    <p>The timer has been paused. Click "Resume" to continue.</p>
-                </div>
-                <div class="modal-footer">
-                    <button id="resume-button" type="button" class="btn btn-primary" onclick="resumeTimer()">Resume</button>
-                </div>
-            </div>
-        </div>
-    </div>
 
-    <!-- Start Dialog -->
-    <div class="modal fade" id="startModal" tabindex="-1" role="dialog" aria-labelledby="startModalLabel"
-         aria-hidden="false" data-backdrop="static" data-keyboard="false">
-        <div class="modal-dialog" role="document">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="startModalLabel">Welcome</h5>
-                </div>
-                <div class="modal-body">
-                    <p>Click Start to Begin your Day!</p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" id="start-button" class="btn btn-primary">Start</button>
-                </div>
-            </div>
-        </div>
-    </div>
     <!-- Bootstrap core JavaScript-->
     <script src="static/assets/vendor/jquery/jquery.min.js"></script>
     <script src="static/assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
@@ -492,82 +431,41 @@
     <script src="static/assets/js/sb-admin-2.min.js"></script>
 
     <!-- Page level plugins -->
-    <script src="static/assets/vendor/chart.js/Chart.min.js"></script>
+    <script src="static/assets/vendor/datatables/jquery.dataTables.min.js"></script>
+    <script src="static/assets/vendor/datatables/dataTables.bootstrap4.min.js"></script>
 
     <!-- Page level custom scripts -->
-    <script src="static/assets/js/demo/chart-area-demo.js"></script>
-    <script src="static/assets/js/demo/chart-pie-demo.js"></script>
-        </div></div>
-     <!--SCRIPT FOR Tasks-->
+    <script src="static/assets/js/demo/datatables-demo.js"></script>
+        <script src="static/assets/js/demo/datatables-demo.js"></script>
+    <script src="static/assets/js/track.js"></script>
+
 <script>
     $(document).ready(function() {
-        let timerInterval;
-        let elapsedSeconds = 0;
-
-        function formatTime(seconds) {
-            let hrs = Math.floor(seconds / 3600);
-            let mins = Math.floor((seconds % 3600) / 60);
-            let secs = seconds % 60;
-            return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        // Check if the table is already a DataTable and destroy it if necessary
+        if ($.fn.DataTable.isDataTable('#dataTable')) {
+            $('#dataTable').DataTable().destroy();
         }
 
-        function updateTime() {
-            $('#elapsed-time').text(formatTime(elapsedSeconds));
-        }
-
-        function startTimer() {
-            timerInterval = setInterval(() => {
-                elapsedSeconds++;
-                updateTime();
-                // Pause timer after every 10 seconds
-                 if (elapsedSeconds % 1800 === 0) {
-                     pauseTimer();
-                 }
-            }, 1000);
-        }
-
-        function pauseTimer() {
-            clearInterval(timerInterval);
-            $('#resumeModal').modal('show');
-        }
-
-        function resumeTimer() {
-            $.post('/resume_timer', function(response) {
-                if (response.status === 'resumed') {
-                    startTimer();
-                    $('#resumeModal').modal('hide');
-                }
-            });
-        }
-
-        $('#start-button').click(function() {
-            $.post('/start_timer', function(response) {
-                if (response.status === 'started') {
-                    elapsedSeconds = 0;
-                    startTimer();
-                    $('#startModal').modal('hide');
+        // Initialize the DataTable with desired settings
+        $('#dataTable').DataTable({
+            "columnDefs": [
+                { "searchable": false, "targets": [-1, 4] }  // Make the last column and the 5th column non-searchable
+            ]
+        });
+    });
+</script>
+<script>
+        $(document).ready(function() {
+            var currentUrl = window.location.pathname;
+            $('.nav-item a').each(function() {
+                var linkUrl = $(this).attr('href');
+                if (currentUrl === '/' + linkUrl) {
+                    $(this).parent().addClass('active');
                 }
             });
         });
+    </script>
 
-        $('#resume-button').click(resumeTimer);
+</body>
 
-        function fetchElapsedTime() {
-            $.get('/get_elapsed_time', function(response) {
-                elapsedSeconds = response.elapsed_seconds;
-                updateTime();
-                if (elapsedSeconds != 0) {
-                    startTimer();
-                    $('#startModal').modal('hide');
-                } else {
-                    $('#startModal').modal('show');
-                }
-            });
-        }
-
-        fetchElapsedTime();
-    });
-</script>
-
-
-</body></html>
+</html>
